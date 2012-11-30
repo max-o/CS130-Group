@@ -6,9 +6,15 @@
 //  Copyright 2011 __MyCompanyName__. All rights reserved.
 //
 
+#include "Angel.h"
 #include <iostream>
 #include <fstream>
-#include "Angel.h"
+#include <boost/thread.hpp>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <stdlib.h>
+#include <string.h>
 #ifdef __APPLE__  // include Mac OS X verions of headers
 #  include <OpenGL/OpenGL.h>
 #  include <GLUT/glut.h>
@@ -17,6 +23,8 @@
 #  include <GL/freeglut.h>
 #  include <GL/freeglut_ext.h>
 #endif  // __APPLE__
+
+using namespace std;
 
 
 void init( void );
@@ -72,7 +80,7 @@ void triangle( const point4& a, const point4& b, const point4& c )
 point4 unit( const point4& p )
 {
     float len = p.x * p.x + p.y * p.y + p.z * p.z;
-    
+
     point4 t;
     if ( len > DivideByZeroTolerance )
     {
@@ -102,7 +110,7 @@ void divide_triangle( const point4& a, const point4& b, const point4& c, int cou
 
 void tetrahedron( int count )
 {
-    point4 v[4] = 
+    point4 v[4] =
     {
         vec4( 0.0f, 0.0f, 1.0f, 1.0f ),
         vec4( 0.0f, 0.942809f, -0.333333f, 1.0f ),
@@ -123,13 +131,13 @@ void init( void )
     // subdivide a tetrahedron into a sphere
 
 
-  
+
 	tetrahedron( NumTimesToSubdivide );
 	tetrahedron( NumTimesToSubdivide );
 	tetrahedron( NumTimesToSubdivide );
 	tetrahedron( NumTimesToSubdivide );
 	tetrahedron( NumTimesToSubdivide );
- 
+
     GLuint vao;
 #ifdef __APPLE__  // include Mac OS X verions of headers
     glGenVertexArraysAPPLE(1, &vao);
@@ -146,7 +154,7 @@ void init( void )
     glBufferData(GL_ARRAY_BUFFER, sizeof(points)+sizeof(normals), NULL, GL_STATIC_DRAW);
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(points), points);
     glBufferSubData(GL_ARRAY_BUFFER, sizeof(points), sizeof(normals), normals);
-    
+
     // load shaders and use the resulting shader programs
     program = InitShader("vShader.glsl", "fShader.glsl");
     glUseProgram(program);
@@ -158,16 +166,16 @@ void init( void )
     GLuint vNormal = glGetAttribLocation(program, "vNormal");
     glEnableVertexAttribArray(vNormal);
     glVertexAttribPointer(vNormal, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(sizeof(points)));
-    glClearColor( 0.5, 0.5, 0.5, 1.0 ); 
-    
-    
+    glClearColor( 0.5, 0.5, 0.5, 1.0 );
+
+
     // retrieve transformation uniform variable locations
     ModelView = glGetUniformLocation(program, "ModelView");
     Projection = glGetUniformLocation(program, "Projection");
-    
+
     glEnable( GL_DEPTH_TEST );
-    
- 
+
+
 }
 
 point4  position(-10, 8, 15, 1.0);
@@ -178,17 +186,17 @@ float p1x = 0; float p1z = 0;
 float p2x = 0; float p2z = 0;
 float p3x = 0; float p3z = 0;
 float p4x = 0; float p4z = 0;
-float py1 = 0; float py2 = 0; 
+float py1 = 0; float py2 = 0;
 
 
 
-void display( void )					
+void display( void )
 
 
 {
-	float shadeType = 0; 
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	
-	
+	float shadeType = 0;
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
 	point4 light_position(position.x, position.y, position.z, 1);	// light is at camera position, always lighting the sun
 	light_position = LookAt(position, position + direction, up) * light_position;
 
@@ -196,24 +204,24 @@ void display( void )
     color4 light_ambient(   1.f, 0.5f, 1.f, 1.0f );
     color4 light_diffuse(   1.f, 1.f, 1.f, 1.0f );
     color4 light_specular(  0.f, 0.f, 0.f, 1.0f );
-    
+
     color4 material_ambient( 0.1f, 0.0f, 0.0f, 1.0f );
     color4 material_diffuse( 0.5f, 0.0f, 0.0f, 1.0f );
     color4 material_specular( .1f, 0.1f, 0.1f, 1.0f );
     float  material_shininess = 50.f;
 
-    
+
     color4 ambient_product = light_ambient * material_ambient;
     color4 diffuse_product = light_diffuse * material_diffuse;
     color4 specular_product = light_specular * material_specular;
-    
+
     glUniform4fv(glGetUniformLocation(program, "AmbientProduct"), 1, ambient_product);
     glUniform4fv(glGetUniformLocation(program, "DiffuseProduct"), 1, diffuse_product);
     glUniform4fv(glGetUniformLocation(program, "SpecularProduct"), 1, specular_product);
     glUniform4fv(glGetUniformLocation(program, "LightPosition"), 1, light_position);
     glUniform1f(glGetUniformLocation(program, "Shininess"), material_shininess);
 	glUniform1f(glGetUniformLocation(program, "shadingType"), shadeType);
-	
+
 	std::ifstream file;
 	file.open("positions.txt");
 	mat4 model_view;
@@ -236,8 +244,8 @@ void display( void )
 		glDrawArrays(GL_TRIANGLES, 4 * NumVertices, NumVertices);
 		count++;
 	}
-	
-	
+
+
 	glutSwapBuffers();
 }
 
@@ -245,14 +253,14 @@ GLfloat zNear = 1.0f; GLfloat zFar = 30.0f;
 void reshape( int width, int height )
 {
     glViewport(0, 0, width, height);
-    
+
     GLfloat left = -2.0f, right = 2.0f;
     GLfloat top = 2.0f, bottom = -2.0f;
     zNear = 1.0f; zFar = 30.0f;
-    
+
     GLfloat aspect = GLfloat(width)/height;
-	
-    
+
+
     if ( aspect > 1.0f )
     {
         left *= aspect;
@@ -263,7 +271,7 @@ void reshape( int width, int height )
         top /= aspect;
         bottom /= aspect;
     }
-    
+
     //mat4 projection = Ortho(left, right, bottom, top, zNear, zFar);
     mat4 projection = Perspective(45.0f, aspect, zNear, zFar);
     glUniformMatrix4fv(Projection, 1, GL_TRUE, projection);
@@ -272,8 +280,8 @@ float k = 0;
 
 const float MIN_DIST_INCREMENT = 0.25;
 float speed = MIN_DIST_INCREMENT;
-const float MAX_DIST_INCREMENT = 10.0;
-const float SPEED_INCREMENT = 0.5;
+const float MAX_DIST_INCREMENT = 60.0;
+const float SPEED_INCREMENT = 5;
 
 void keyboard( unsigned char key, int x, int y )
 {
@@ -283,27 +291,27 @@ void keyboard( unsigned char key, int x, int y )
             exit(EXIT_SUCCESS);
             break;
 		case 'a': // move left 0.25 units
-			position = position + MIN_DIST_INCREMENT * normalize(cross(up, direction));		
+			position = position + MIN_DIST_INCREMENT * normalize(cross(up, direction));
 			break;
 		case 'd': // move right 0.25 units
-			position = position - MIN_DIST_INCREMENT * normalize(cross(up, direction));	
-			break;		
+			position = position - MIN_DIST_INCREMENT * normalize(cross(up, direction));
+			break;
 		case 'w': // camera 'moves' upward
-			position.y += MIN_DIST_INCREMENT;		
-			break;		
+			position.y += MIN_DIST_INCREMENT;
+			break;
 		case 's': // camera 'moves' downward
-			position.y -= MIN_DIST_INCREMENT;		
-			break;  
+			position.y -= MIN_DIST_INCREMENT;
+			break;
 		case ' ': // reset
 			position  = point4(-10, 8, 15, 1.0);
 			at        = point4( 0.0, 0.0, 0.0, 1.0 );
 			up        = point4( 0.0, 1.0, 0.0, 0.0 );
-            direction = at - position;			
+            direction = at - position;
 			zNear     = 1.0f;
 			zFar	  = 30.0f;
 			break;
 		case 'u': // pivot upward
-			direction = RotateX(1.0) * direction;			
+			direction = RotateX(1.0) * direction;
 			break;
 		case 'j': // pivot upward
 			direction = RotateX(-1.0) * direction;
@@ -315,39 +323,44 @@ void keyboard( unsigned char key, int x, int y )
     }
 }
 
-void SpecialKeys(int key, int x, int y) 
+void SpecialKeys(int key, int x, int y)
 // special function for arrow keys
 {
     switch (key)
 	{
 		case GLUT_KEY_LEFT:  // camera 'heads' left one degree
-			direction = RotateY(1.0) * direction;			
+			direction = RotateY(1.0) * direction;
 			break;
 		case GLUT_KEY_RIGHT: // camera 'heads' right one degree
-			direction = RotateY(-1.0) * direction;			
-			break;		
+			direction = RotateY(-1.0) * direction;
+			break;
 		case GLUT_KEY_DOWN: // move backward 0.25 units
-			position = position - speed * normalize(direction);	
+			position = position - speed * normalize(direction);
+            cerr << "Before: " << speed << endl;
 			if (speed < MAX_DIST_INCREMENT)
 				speed += SPEED_INCREMENT;
-			break;      
+            cerr << "After: " << speed << endl;
+            cerr << "Max Dist " << MAX_DIST_INCREMENT << endl;
+            cerr << "Speed INC " << SPEED_INCREMENT << endl;
+			break;
 		case GLUT_KEY_UP:   // move forward 0.25 units
-			position = position + speed * normalize(direction);	
+			position = position + speed * normalize(direction);
 			if (speed < MAX_DIST_INCREMENT)
 				speed += SPEED_INCREMENT;
-			break;  
+			break;
 	}
 	glutPostRedisplay();
 }
 
-void Release(int key, int x, int y) 
+void Release(int key, int x, int y)
 // special function to reset speed if user releases key
 {
     switch (key)
 	{
-	case GLUT_KEY_UP:		
-	case GLUT_KEY_DOWN:		
+	case GLUT_KEY_UP:
+	case GLUT_KEY_DOWN:
 		speed = MIN_DIST_INCREMENT;
+		cerr << "Released!" << endl;
 		break;
 	}
 
@@ -400,36 +413,119 @@ void idle()
 			descent2 = false;
 		}
 	}
-	
-	
+
+
 
 	glutPostRedisplay();
-	
+
 }
 
-int main (int argc, char *argv[] )
+int getConnection()
 {
-     
-    glutInit( &argc, argv );
+	// Variables for finding socket
+	struct addrinfo hints, *servinfo, *ptr;
+	int rv;
+	int connectFD;
+
+	// Fill in hint struct
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_PASSIVE;
+
+	// Variables for host and port
+	string host = "localhost";
+	string port = "12345";
+
+	// Get the candidate socket info structs
+	if ((rv = getaddrinfo(host.c_str(), port.c_str(),
+						  &hints, &servinfo)) != 0)
+	{
+		string s = gai_strerror(rv);
+		s += "\nHostname: " + host + "\nPort: " + port;
+		cerr << "getaddrinfo: " << s << endl;
+		return -1;
+		//throw ConnectionException("getaddrinfo: " + s, -1, -1);
+	}
+
+	// Iterate through socket info struct list until one is found
+	// which creates a socket and connects
+	for (ptr = servinfo; ptr != NULL; ptr = ptr->ai_next)
+	{
+		connectFD = socket(ptr->ai_family, ptr->ai_socktype,
+						   ptr->ai_protocol);
+
+		if (connectFD == -1)
+		{
+			continue;
+		}
+
+		if (connect(connectFD, ptr->ai_addr, ptr->ai_addrlen) == -1)
+		{
+			close(connectFD);
+			continue;
+		}
+
+		break;
+	}
+
+	// Free allocated memory regardless of success
+	freeaddrinfo(servinfo);
+
+	// Check success
+	if (ptr == NULL)
+	{
+		cerr << "Could not create the socket" << endl;
+		return -1;
+		//throw ConnectionException("Could not create the socket", -1, -1);
+	}
+
+	// Return connection file descriptor
+	return connectFD;
+}
+
+void registerWithSimulation()
+{
+	int connectFD = getConnection();
+	cout << connectFD << endl;
+	if(connectFD != -1)
+	{
+		// Do stuff with connectFD
+	}
+}
+
+void visualize()
+{
 	glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
 	glutInitWindowPosition(100, 50);
 	glutInitWindowSize(800, 600);
     glutCreateWindow( "Sphere" );
-    
+
 #ifndef __APPLE__  // include Mac OS X verions of headers
 	glewInit();
 #endif
-	
+
 	init();
-    
+
     glutDisplayFunc(display);
 	glutIdleFunc(idle);
     glutReshapeFunc(reshape);
     glutKeyboardFunc(keyboard);
 	glutSpecialFunc(SpecialKeys); // special function for arrow keys
 	glutSpecialUpFunc(Release);
-    
+
     glutMainLoop();
+
+}
+
+int main (int argc, char *argv[] )
+{
+    glutInit( &argc, argv );
+    boost::thread dataThread = boost::thread(registerWithSimulation);
+    boost::thread visualizerThread = boost::thread(visualize);
+
+    visualizerThread.join();
+    dataThread.join();
     return 0;
 }
 

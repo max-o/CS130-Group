@@ -22,11 +22,16 @@ CFLAGS_C = $(filter-out -include "sdk.h",$(CFLAGS))
 
 # MAKE_DEP = -MMD -MT $@ -MF $(@:.o=.d)
 
+BOOST_INC_PATH = ../lib/boost_1_52_0
+BOOST_LIB_PATH = ../lib/boost_1_52_0/stage/lib
+GLUT_LIB_PATH = /usr/local/lib
+GLEW_LIB_PATH = ../lib/glew-1.9.0/lib
+
 CFLAGS = -Wall 
-INCLUDES = 
-LDFLAGS =  -s
+INCLUDES = -I$(BOOST_INC_PATH)
+LDFLAGS =  -s -L$(BOOST_LIB_PATH) -L$(GLUT_LIB_PATH) -L$(GLEW_LIB_PATH)
 RCFLAGS = 
-LDLIBS = $(T_LDLIBS) -lGL -lX11 /usr/local/lib/libglut.so /usr/lib/x86_64-linux-gnu/libX11.so ../lib/glew-1.9.0/lib/libGLEW.a  -lstdc++
+LDLIBS = $(T_LDLIBS) -lGL /usr/local/lib/libglut.a /usr/lib/x86_64-linux-gnu/libX11.a ../lib/glew-1.9.0/lib/libGLEW.a ../lib/boost_1_52_0/stage/lib/libboost_thread.a ../lib/boost_1_52_0/stage/lib/libboost_system.a -lstdc++
 
 LINK_exe = gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
 LINK_con = gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
@@ -53,6 +58,7 @@ all.targets : Debug_target Release_target
 clean :
 	rm -fv $(clean.OBJ)
 	rm -fv $(DEP_FILES)
+	rm -fr *~
 
 .PHONY: all clean distclean
 
