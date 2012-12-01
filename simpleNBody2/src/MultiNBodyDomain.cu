@@ -73,6 +73,8 @@ void MultiNBodyDomain::step(float indt){
 		if(onGpu()) gpuIntegrateNBodySystem(indt);
 		else integrateNBodySystem(indt);
 
+
+
 		// To use force calculation only on GPU simply call:
 		//integrateNBodySystem(indt);
 		// Note: Thread block sizes not updated for arbitrary np in force calculator kernel call -- use power of 2
