@@ -7,7 +7,6 @@
 //
 
 #include "Angel.h"
-#include <iostream>
 #include <fstream>
 #include <boost/thread.hpp>
 #include <netinet/in.h>
@@ -48,6 +47,14 @@ point4 points[NumVertices * 5];
 vec3   normals[NumVertices * 5];
 
 GLuint ModelView, Projection, shadingType;
+
+// Ring buffer
+float **positions;
+float **readPos;
+float **writePos;
+int numParticles;
+int bufferSize;
+bool ready = false;
 
 int Index = 0;
 
@@ -194,59 +201,66 @@ void display( void )
 
 
 {
-	float shadeType = 0;
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	point4 light_position(position.x, position.y, position.z, 1);	// light is at camera position, always lighting the sun
-	light_position = LookAt(position, position + direction, up) * light_position;
-
-	shadeType = 0.f; // Phong shading
-    color4 light_ambient(   1.f, 0.5f, 1.f, 1.0f );
-    color4 light_diffuse(   1.f, 1.f, 1.f, 1.0f );
-    color4 light_specular(  0.f, 0.f, 0.f, 1.0f );
-
-    color4 material_ambient( 0.1f, 0.0f, 0.0f, 1.0f );
-    color4 material_diffuse( 0.5f, 0.0f, 0.0f, 1.0f );
-    color4 material_specular( .1f, 0.1f, 0.1f, 1.0f );
-    float  material_shininess = 50.f;
-
-
-    color4 ambient_product = light_ambient * material_ambient;
-    color4 diffuse_product = light_diffuse * material_diffuse;
-    color4 specular_product = light_specular * material_specular;
-
-    glUniform4fv(glGetUniformLocation(program, "AmbientProduct"), 1, ambient_product);
-    glUniform4fv(glGetUniformLocation(program, "DiffuseProduct"), 1, diffuse_product);
-    glUniform4fv(glGetUniformLocation(program, "SpecularProduct"), 1, specular_product);
-    glUniform4fv(glGetUniformLocation(program, "LightPosition"), 1, light_position);
-    glUniform1f(glGetUniformLocation(program, "Shininess"), material_shininess);
-	glUniform1f(glGetUniformLocation(program, "shadingType"), shadeType);
-
-	std::ifstream file;
-	file.open("positions.txt");
-	mat4 model_view;
-	if (!file.is_open() )
+	if(ready)
 	{
-		return;
+		float shadeType = 0;
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		point4 light_position(position.x, position.y, position.z, 1);	// light is at camera position, always lighting the sun
+		light_position = LookAt(position, position + direction, up) * light_position;
+
+		shadeType = 0.f; // Phong shading
+		color4 light_ambient(   1.f, 0.5f, 1.f, 1.0f );
+		color4 light_diffuse(   1.f, 1.f, 1.f, 1.0f );
+		color4 light_specular(  0.f, 0.f, 0.f, 1.0f );
+
+		color4 material_ambient( 0.1f, 0.0f, 0.0f, 1.0f );
+		color4 material_diffuse( 0.5f, 0.0f, 0.0f, 1.0f );
+		color4 material_specular( .1f, 0.1f, 0.1f, 1.0f );
+		float  material_shininess = 50.f;
+
+
+		color4 ambient_product = light_ambient * material_ambient;
+		color4 diffuse_product = light_diffuse * material_diffuse;
+		color4 specular_product = light_specular * material_specular;
+
+		glUniform4fv(glGetUniformLocation(program, "AmbientProduct"), 1, ambient_product);
+		glUniform4fv(glGetUniformLocation(program, "DiffuseProduct"), 1, diffuse_product);
+		glUniform4fv(glGetUniformLocation(program, "SpecularProduct"), 1, specular_product);
+		glUniform4fv(glGetUniformLocation(program, "LightPosition"), 1, light_position);
+		glUniform1f(glGetUniformLocation(program, "Shininess"), material_shininess);
+		glUniform1f(glGetUniformLocation(program, "shadingType"), shadeType);
+
+		mat4 model_view;
+		float x, y, z, mass;
+		int count = 0;
+		if(readPos < writePos && writePos <= (readPos + numParticles))
+		{
+			readPos = readPos + (2 * numParticles);
+			if((readPos - positions) > bufferSize)
+				readPos -= bufferSize;
+		}
+		for(int i = 0; i < numParticles; i++, readPos++)
+		{
+			x = (*readPos)[0];
+			y = (*readPos)[1];
+			z = (*readPos)[2];
+			mass = (*readPos)[3];
+			if (count % 2 == 0)
+				model_view = LookAt(position, position + direction, up) * Translate(x, py1+y, z) * Scale(mass, mass, mass);
+			else
+				model_view = LookAt(position, position + direction, up) * Translate(x, py2+y, z) * Scale(mass, mass, mass);
+			glUniformMatrix4fv(ModelView, 1, GL_TRUE, model_view);
+			glDrawArrays(GL_TRIANGLES, 4 * NumVertices, NumVertices);
+			count++;
+		}
+		if((readPos - positions) >= bufferSize)
+		{
+			readPos = positions;
+		}
+
+		glutSwapBuffers();
 	}
-
-	int x, y, z;
-	double mass;
-	int count = 0;
-	while (!file.eof())
-	{
-		file >> x >> y >> z >> mass;
-		if (count % 2 == 0)
-			model_view = LookAt(position, position + direction, up) * Translate(x, py1+y, z) * Scale(mass, mass, mass);
-		else
-			model_view = LookAt(position, position + direction, up) * Translate(x, py2+y, z) * Scale(mass, mass, mass);
-		glUniformMatrix4fv(ModelView, 1, GL_TRUE, model_view);
-		glDrawArrays(GL_TRIANGLES, 4 * NumVertices, NumVertices);
-		count++;
-	}
-
-
-	glutSwapBuffers();
 }
 
 GLfloat zNear = 1.0f; GLfloat zFar = 30.0f;
@@ -414,8 +428,6 @@ void idle()
 		}
 	}
 
-
-
 	glutPostRedisplay();
 
 }
@@ -477,20 +489,77 @@ int getConnection()
 	{
 		cerr << "Could not create the socket" << endl;
 		return -1;
-		//throw ConnectionException("Could not create the socket", -1, -1);
 	}
 
 	// Return connection file descriptor
 	return connectFD;
 }
 
+void mainReadLoop(int connectFD)
+{
+	int x = 0, y = 1, z = 2, mass = 3;
+	std::ifstream file;
+	file.open("positions.txt");
+	if (!file.is_open() )
+	{
+		return;
+	}
+	
+	while(1)
+	{
+		// Polling approach sucks, but blocking is hard
+		while(writePos <= readPos && readPos < (writePos + numParticles))
+			;	// Wait until there is room to write
+		while (!file.eof())
+		{
+			file >> (*writePos)[x] >> (*writePos)[y] >> 
+					(*writePos)[z] >> (*writePos)[mass];
+			writePos++;
+		}
+		file.seekg(0);
+		if((writePos - positions) >= bufferSize)
+			writePos = positions;
+	}
+}
+
 void registerWithSimulation()
 {
 	int connectFD = getConnection();
 	cout << connectFD << endl;
-	if(connectFD != -1)
+	if(connectFD == -1)
 	{
 		// Do stuff with connectFD
+		numParticles = 11;
+		bufferSize = 3 * numParticles;
+		positions = new float*[bufferSize];
+		for(int i = 0; i < bufferSize; i++)
+		{
+			positions[i] = new float[4];
+		}
+		readPos = positions;
+		writePos = positions;
+		
+		std::ifstream file;
+		file.open("positions.txt");
+		if (!file.is_open() )
+		{
+			return;
+		}
+		
+		int x = 0, y = 1, z = 2, mass = 3;
+		while (!file.eof())
+		{
+			file >> (*writePos)[x] >> (*writePos)[y] >> 
+					(*writePos)[z] >> (*writePos)[mass];
+			writePos++;
+		}
+		ready = true;
+		file.close();
+		mainReadLoop(connectFD);
+	}
+	else
+	{
+		abort();
 	}
 }
 
