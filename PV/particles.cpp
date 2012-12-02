@@ -434,7 +434,7 @@ int getConnection()
 	hints.ai_flags = AI_PASSIVE;
 
 	// Variables for host and port
-	string host = "localhost";
+	string host = "mars.seas.ucla.edu";
 	string port = "12345";
 
 	// Get the candidate socket info structs
