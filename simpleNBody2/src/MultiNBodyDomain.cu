@@ -73,13 +73,6 @@ void MultiNBodyDomain::step(float indt){
 		if(onGpu()) gpuIntegrateNBodySystem(indt);
 		else integrateNBodySystem(indt);
 
-for(int i=0;i<4096;i=i+500)
-        {
-            if(i>=4096) break;
-        printf("Point %d: %f,%f,%f,%f\n",i,h_pos[i*4+0],h_pos[i*4+1],h_pos[i*4+2],h_pos[i*4+3]);
-        }
-        printf("Out of domain");
-
 		// To use force calculation only on GPU simply call:
 		//integrateNBodySystem(indt);
 		// Note: Thread block sizes not updated for arbitrary np in force calculator kernel call -- use power of 2

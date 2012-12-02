@@ -66,6 +66,12 @@ LD_MPI_FLAGS    ?= -lmpi -lmpi_cxx
 #MPI_LIB_PATH = /usr/lib
 #LD_MPI_FLAGS = -lmpich -lmpichcxx
 
+#Boost stuff
+BOOST_PATH        ?= ../boostLibs
+BOOST_LIB_PATH    ?= $(BOOST_PATH)/stage/lib
+BOOST_INC_PATH    ?= $(BOOST_PATH)/
+LD_BOOST_FLAGS    ?= -lboost_thread -lboost_system
+
 # Common binaries
 NVCC            ?= $(CUDA_BIN_PATH)/nvcc $(USE_DEBUG)
 GCC             ?= g++ $(USE_DEBUG)
@@ -86,14 +92,14 @@ GENCODE_FLAGS   :=  $(GENCODE_SM10) $(GENCODE_SM20) #$(GENCODE_SM30)
 
 # OS-specific build flags
 ifneq ($(DARWIN),) 
-      LDFLAGS   := -Xlinker -rpath $(CUDA_LIB_PATH) -rpath $(MPI_LIB_PATH) -L$(CUDA_LIB_PATH) -L$(MPI_LIB_PATH) -lcudart -lcufft $(LD_MPIFLAGS)
+      LDFLAGS   := -Xlinker -rpath $(CUDA_LIB_PATH) -rpath $(MPI_LIB_PATH) -L$(CUDA_LIB_PATH) -L$(MPI_LIB_PATH) -L$(BOOST_LIB_PATH) -lcudart -lcufft $(LD_MPIFLAGS) $(LD_BOOST_FLAGS)
       CCFLAGS   := -arch $(OS_ARCH) 
 else
   ifeq ($(OS_SIZE),32)
-      LDFLAGS   := -L$(CUDA_LIB_PATH) -lcudart -lcufft -L$(MPI_LIB_PATH) $(LD_MPIFLAGS)
+      LDFLAGS   := -L$(CUDA_LIB_PATH) -lcudart -lcufft -L$(MPI_LIB_PATH) $(LD_MPIFLAGS) -L$(BOOST_LIB_PATH) $(LD_BOOST_FLAGS)
       CCFLAGS   := -m32
   else
-      LDFLAGS   := -L$(CUDA_LIB_PATH)64 -lcudart -lcufft -L$(MPI_LIB_PATH) $(LD_MPIFLAGS)
+      LDFLAGS   := -L$(CUDA_LIB_PATH)64 -lcudart -lcufft -L$(MPI_LIB_PATH) $(LD_MPIFLAGS) -L$(BOOST_LIB_PATH) $(LD_BOOST_FLAGS)
       CCFLAGS   := -m64
   endif
 endif
@@ -131,10 +137,10 @@ endif
 
 
 # Common includes and paths for CUDA
-INCLUDES      := -I$(CUDA_INC_PATH) -I. -I.. -I./src_nbody -I./src -I$(MPI_INC_PATH)
+INCLUDES      := -I$(CUDA_INC_PATH) -I. -I.. -I./src_nbody -I./src -I$(MPI_INC_PATH) -I$(BOOST_INC_PATH)
 
 ifeq ($(USE_SDK),TRUE) #GL uses SDK Libraries
-INCLUDES      += -I$(CUDA_SDK_PATH)/common/inc -I$(CUDA_SDK_PATH)/../shared/inc -I$(MPI_INC_PATH)
+INCLUDES      += -I$(CUDA_SDK_PATH)/common/inc -I$(CUDA_SDK_PATH)/../shared/inc -I$(MPI_INC_PATH) -I$(BOOST_INC_PATH)
 LDFLAGS       += $(LIBPATH_OPENGL)
 endif
 
@@ -153,7 +159,7 @@ ccobj/simpleNBody.o: src/simpleNBody.cpp
 	$(GCC) $(CCFLAGS) $(EXTRA_CCFLAGS) $(INCLUDES) -o $@ -c $<
 
 simpleNBody: ccobj/simpleNBody.o ccobj/MultiNBodyWorld.o cuobj/MultiNBodyDomain.o
-	$(GCC) $(CCFLAGS) -o bin/$@ $+ $(LDFLAGS) $(EXTRA_LDFLAGS) $(LD_MPI_FLAGS)
+	$(GCC) $(CCFLAGS) -o bin/$@ $+ $(LDFLAGS) $(EXTRA_LDFLAGS) $(LD_MPI_FLAGS) $(LD_BOOST_FLAGS)
 
 run: build
 	./bin/nbody 
