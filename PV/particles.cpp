@@ -7,6 +7,9 @@
 //
 
 #include "Angel.h"
+#include "particles.h"
+
+#include <iostream>
 #include <fstream>
 #include <boost/thread.hpp>
 #include <netinet/in.h>
@@ -14,6 +17,8 @@
 #include <netdb.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+
 #ifdef __APPLE__  // include Mac OS X verions of headers
 #  include <OpenGL/OpenGL.h>
 #  include <GLUT/glut.h>
@@ -25,69 +30,82 @@
 
 using namespace std;
 
+vec3   Visualizer::normals[NUM_VERTICES * 5];
+GLuint Visualizer::ModelView;
+GLuint Visualizer::Projection;
+GLuint Visualizer::shadingType;
 
-void init( void );
-void display( void );
-void keyboard( unsigned char key, int x, int y );
-void reshape( int width, int height );
+GLuint Visualizer::program;
+point4 Visualizer::points[NUM_VERTICES * 5];
+int Visualizer::Index = 0;
 
-//----
-#include <iostream>
-#include <math.h>
-typedef vec4 point4;
-typedef vec4 color4;
+point4 Visualizer::position(-10, 8, 15, 1.0);
+point4 Visualizer::at( 0.0, 0.0, 0.0, 1.0 );
+vec4   Visualizer::up( 0.0, 1.0, 0.0, 1.0 );
+vec4   Visualizer::direction = at - position;
+float  Visualizer::speed = MIN_DIST_INCREMENT;
 
-const int NumTimesToSubdivide = 5; // 6, 5, 4, 3, 2, 1, 0
-// (4 faces) ^ (NumTimesToSubdivide + 1)
-const int NumTriangles =  4096; // 16384, 4096, 1024, 256, 64, 16, 4
+GLfloat Visualizer::zNear = 1.0f; 
+GLfloat Visualizer::zFar = 30.0f;
 
-const int NumVertices = 3 * NumTriangles;
+// TO BE DELETED
+float Visualizer::p1x = 0;
+float Visualizer::p1z = 0;
+float Visualizer::p2x = 0; 
+float Visualizer::p2z = 0;
+float Visualizer::p3x = 0; 
+float Visualizer::p3z = 0;
+float Visualizer::p4x = 0; 
+float Visualizer::p4z = 0;
+float Visualizer::py1 = 0; 
+float Visualizer::py2 = 0; 
+float Visualizer::k = 0;
+float Visualizer::p1time = .04f;
+float Visualizer::p2time = .04f;
+float Visualizer::p3time = 120;
+float Visualizer::p4time = 300;
+bool Visualizer::descent1 = false;
+bool Visualizer::descent2 = true;
+// END TO BE DELETED
 
-point4 points[NumVertices * 5];
-vec3   normals[NumVertices * 5];
-
-GLuint ModelView, Projection, shadingType;
 
 // Ring buffer
-float **positions;
-float **readPos;
-float **writePos;
-int numParticles;
-int bufferSize;
-bool ready = false;
+float** Visualizer::positions;
+float** Visualizer::readPos;
+float** Visualizer::writePos;
+int     Visualizer::numParticles;
+int		Visualizer::bufferSize;
+bool	Visualizer::ready = false;
 
-int Index = 0;
-
-void triangle( const point4& a, const point4& b, const point4& c );
-point4 unit( const point4& p );
-void divide_triangle( const point4& a, const point4& b, const point4& c, int count );
-void tetrahedron( int count );
-
-void triangle( const point4& a, const point4& b, const point4& c )
-{
-	vec3 normal = normalize(cross(b-a,c-b));
-	if (Index >=  2 * NumVertices || Index >= NumVertices) // Gourad or Phong shading, average normals (planet 2 & 3)
-	{ // such a small scale that normals are just vertices (normalized)
-		vec3 x(a.x, a.y, a.z);
-		vec3 y(a.x, a.y, a.z);
-		vec3 z(a.x, a.y, a.z);
-
-		normals[Index] = normalize(x); points[Index] = a; Index++;
-		normals[Index] = normalize(y); points[Index] = b; Index++;
-		normals[Index] = normalize(z); points[Index] = c; Index++;
-	}
-	else // flat shading, don't average normals
-	{
-		normals[Index] = normal; points[Index] = a; Index++;
-		normals[Index] = normal; points[Index] = b; Index++;
-		normals[Index] = normal; points[Index] = c; Index++;
-	}
+Visualizer::Visualizer()
+{               
 }
 
-point4 unit( const point4& p )
+void Visualizer::triangle( const point4& a, const point4& b, const point4& c )
+{
+    vec3 normal = normalize(cross(b-a,c-b));
+    if (Index >=  2 * NUM_VERTICES || Index >= NUM_VERTICES) // Gourad or Phong shading, average normals (planet 2 & 3)
+    { // such a small scale that normals are just vertices (normalized)
+        vec3 x(a.x, a.y, a.z);
+        vec3 y(a.x, a.y, a.z);
+        vec3 z(a.x, a.y, a.z);
+
+        normals[Index] = normalize(x); points[Index] = a; Index++;
+        normals[Index] = normalize(y); points[Index] = b; Index++;
+        normals[Index] = normalize(z); points[Index] = c; Index++;
+    }
+    else // flat shading, don't average normals
+    {
+        normals[Index] = normal; points[Index] = a; Index++;
+        normals[Index] = normal; points[Index] = b; Index++;
+        normals[Index] = normal; points[Index] = c; Index++;
+    }
+}
+
+point4 Visualizer::unit( const point4& p )
 {
     float len = p.x * p.x + p.y * p.y + p.z * p.z;
-
+    
     point4 t;
     if ( len > DivideByZeroTolerance )
     {
@@ -97,7 +115,7 @@ point4 unit( const point4& p )
     return t;
 }
 
-void divide_triangle( const point4& a, const point4& b, const point4& c, int count )
+void Visualizer::divide_triangle( const point4& a, const point4& b, const point4& c, int count )
 {
     if ( count > 0 )
     {
@@ -115,9 +133,9 @@ void divide_triangle( const point4& a, const point4& b, const point4& c, int cou
     }
 }
 
-void tetrahedron( int count )
+void Visualizer::tetrahedron( int count )
 {
-    point4 v[4] =
+    point4 v[4] = 
     {
         vec4( 0.0f, 0.0f, 1.0f, 1.0f ),
         vec4( 0.0f, 0.942809f, -0.333333f, 1.0f ),
@@ -130,21 +148,16 @@ void tetrahedron( int count )
     divide_triangle(v[0], v[2], v[3], count);
 }
 
-
-//----
-GLuint program;
-void init( void )
+void Visualizer::init( void )
 {
     // subdivide a tetrahedron into a sphere
-
-
-
-	tetrahedron( NumTimesToSubdivide );
-	tetrahedron( NumTimesToSubdivide );
-	tetrahedron( NumTimesToSubdivide );
-	tetrahedron( NumTimesToSubdivide );
-	tetrahedron( NumTimesToSubdivide );
-
+          
+    tetrahedron( NUM_TIMES_TO_SUBDIVIDE );
+    tetrahedron( NUM_TIMES_TO_SUBDIVIDE );
+    tetrahedron( NUM_TIMES_TO_SUBDIVIDE );
+    tetrahedron( NUM_TIMES_TO_SUBDIVIDE );
+    tetrahedron( NUM_TIMES_TO_SUBDIVIDE );
+ 
     GLuint vao;
 #ifdef __APPLE__  // include Mac OS X verions of headers
     glGenVertexArraysAPPLE(1, &vao);
@@ -161,7 +174,7 @@ void init( void )
     glBufferData(GL_ARRAY_BUFFER, sizeof(points)+sizeof(normals), NULL, GL_STATIC_DRAW);
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(points), points);
     glBufferSubData(GL_ARRAY_BUFFER, sizeof(points), sizeof(normals), normals);
-
+    
     // load shaders and use the resulting shader programs
     program = InitShader("vShader.glsl", "fShader.glsl");
     glUseProgram(program);
@@ -173,108 +186,92 @@ void init( void )
     GLuint vNormal = glGetAttribLocation(program, "vNormal");
     glEnableVertexAttribArray(vNormal);
     glVertexAttribPointer(vNormal, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(sizeof(points)));
-    glClearColor( 0.5, 0.5, 0.5, 1.0 );
-
-
+    glClearColor( 0.5, 0.5, 0.5, 1.0 );     
+    
     // retrieve transformation uniform variable locations
     ModelView = glGetUniformLocation(program, "ModelView");
     Projection = glGetUniformLocation(program, "Projection");
-
+    
     glEnable( GL_DEPTH_TEST );
-
-
 }
 
-point4  position(-10, 8, 15, 1.0);
-point4  at( 0.0, 0.0, 0.0, 1.0 );
-vec4    up( 0.0, 1.0, 0.0, 1.0 );
-vec4    direction = at - position;
-float p1x = 0; float p1z = 0;
-float p2x = 0; float p2z = 0;
-float p3x = 0; float p3z = 0;
-float p4x = 0; float p4z = 0;
-float py1 = 0; float py2 = 0;
-
-
-
-void display( void )
-
-
+void Visualizer::display( void )
 {
-	if(ready)
-	{
-		float shadeType = 0;
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if(ready)
+    {        
+        float shadeType = 0;
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		point4 light_position(position.x, position.y, position.z, 1);	// light is at camera position, always lighting the sun
-		light_position = LookAt(position, position + direction, up) * light_position;
+        point4 light_position(position.x, position.y, position.z, 1);   // light is at camera position, always lighting the sun
+        light_position = LookAt(position, position + direction, up) * light_position;
 
-		shadeType = 0.f; // Phong shading
-		color4 light_ambient(   1.f, 0.5f, 1.f, 1.0f );
-		color4 light_diffuse(   1.f, 1.f, 1.f, 1.0f );
-		color4 light_specular(  0.f, 0.f, 0.f, 1.0f );
+        shadeType = 0.f; // Phong shading
+        color4 light_ambient(   1.f, 0.5f, 1.f, 1.0f );
+        color4 light_diffuse(   1.f, 1.f, 1.f, 1.0f );
+        color4 light_specular(  0.f, 0.f, 0.f, 1.0f );
 
-		color4 material_ambient( 0.1f, 0.0f, 0.0f, 1.0f );
-		color4 material_diffuse( 0.5f, 0.0f, 0.0f, 1.0f );
-		color4 material_specular( .1f, 0.1f, 0.1f, 1.0f );
-		float  material_shininess = 50.f;
+        color4 material_ambient( 0.1f, 0.0f, 0.0f, 1.0f );
+        color4 material_diffuse( 0.5f, 0.0f, 0.0f, 1.0f );
+        color4 material_specular( .1f, 0.1f, 0.1f, 1.0f );
+        float  material_shininess = 50.f;
 
+        color4 ambient_product = light_ambient * material_ambient;
+        color4 diffuse_product = light_diffuse * material_diffuse;
+        color4 specular_product = light_specular * material_specular;
 
-		color4 ambient_product = light_ambient * material_ambient;
-		color4 diffuse_product = light_diffuse * material_diffuse;
-		color4 specular_product = light_specular * material_specular;
+        glUniform4fv(glGetUniformLocation(program, "AmbientProduct"), 1, ambient_product);
+        glUniform4fv(glGetUniformLocation(program, "DiffuseProduct"), 1, diffuse_product);
+        glUniform4fv(glGetUniformLocation(program, "SpecularProduct"), 1, specular_product);
+        glUniform4fv(glGetUniformLocation(program, "LightPosition"), 1, light_position);
+        glUniform1f(glGetUniformLocation(program, "Shininess"), material_shininess);
+        glUniform1f(glGetUniformLocation(program, "shadingType"), shadeType);
 
-		glUniform4fv(glGetUniformLocation(program, "AmbientProduct"), 1, ambient_product);
-		glUniform4fv(glGetUniformLocation(program, "DiffuseProduct"), 1, diffuse_product);
-		glUniform4fv(glGetUniformLocation(program, "SpecularProduct"), 1, specular_product);
-		glUniform4fv(glGetUniformLocation(program, "LightPosition"), 1, light_position);
-		glUniform1f(glGetUniformLocation(program, "Shininess"), material_shininess);
-		glUniform1f(glGetUniformLocation(program, "shadingType"), shadeType);
+        mat4 model_view;
+        float x, y, z, mass;
+        int count = 0;
+        
+		// MICHAEL: Made a change to condition from writePos <= to writePos <,
+		// so that we redraw the current buffer if next buffer isn't available
+        if(readPos < writePos && writePos < (readPos + numParticles))
+        {         
+            readPos = readPos + (2 * numParticles);
+            if((readPos - positions) > bufferSize)
+                    readPos -= bufferSize;
+        }
 
-		mat4 model_view;
-		float x, y, z, mass;
-		int count = 0;
-		if(readPos < writePos && writePos <= (readPos + numParticles))
-		{
-			readPos = readPos + (2 * numParticles);
-			if((readPos - positions) > bufferSize)
-				readPos -= bufferSize;
-		}
-		for(int i = 0; i < numParticles; i++, readPos++)
-		{
-			x = (*readPos)[0];
-			y = (*readPos)[1];
-			z = (*readPos)[2];
-			mass = (*readPos)[3];
-			if (count % 2 == 0)
-				model_view = LookAt(position, position + direction, up) * Translate(x, py1+y, z) * Scale(mass, mass, mass);
-			else
-				model_view = LookAt(position, position + direction, up) * Translate(x, py2+y, z) * Scale(mass, mass, mass);
-			glUniformMatrix4fv(ModelView, 1, GL_TRUE, model_view);
-			glDrawArrays(GL_TRIANGLES, 4 * NumVertices, NumVertices);
-			count++;
-		}
-		if((readPos - positions) >= bufferSize)
-		{
-			readPos = positions;
-		}
+        for(int i = 0; i < numParticles; i++, readPos++)
+        {               
+            x = (*readPos)[0];            
+            y = (*readPos)[1];            
+            z = (*readPos)[2];            
+            mass = (*readPos)[3];            
+            if (count % 2 == 0)
+                    model_view = LookAt(position, position + direction, up) * Translate(x, py1+y, z) * Scale(mass, mass, mass);
+            else
+                    model_view = LookAt(position, position + direction, up) * Translate(x, py2+y, z) * Scale(mass, mass, mass);
+            glUniformMatrix4fv(ModelView, 1, GL_TRUE, model_view);
+            glDrawArrays(GL_TRIANGLES, 4 * NUM_VERTICES, NUM_VERTICES);
+            count++;
+        }
+        if((readPos - positions) >= bufferSize)
+        {         
+                readPos = positions;
+        }
 
-		glutSwapBuffers();
-	}
+        glutSwapBuffers();
+    }
 }
 
-GLfloat zNear = 1.0f; GLfloat zFar = 30.0f;
-void reshape( int width, int height )
+void Visualizer::reshape( int width, int height )
 {
     glViewport(0, 0, width, height);
-
+    
     GLfloat left = -2.0f, right = 2.0f;
     GLfloat top = 2.0f, bottom = -2.0f;
     zNear = 1.0f; zFar = 30.0f;
-
-    GLfloat aspect = GLfloat(width)/height;
-
-
+    
+    GLfloat aspect = GLfloat(width)/height;        
+    
     if ( aspect > 1.0f )
     {
         left *= aspect;
@@ -285,316 +282,285 @@ void reshape( int width, int height )
         top /= aspect;
         bottom /= aspect;
     }
-
+    
     //mat4 projection = Ortho(left, right, bottom, top, zNear, zFar);
     mat4 projection = Perspective(45.0f, aspect, zNear, zFar);
     glUniformMatrix4fv(Projection, 1, GL_TRUE, projection);
 }
-float k = 0;
 
-const float MIN_DIST_INCREMENT = 0.25;
-float speed = MIN_DIST_INCREMENT;
-const float MAX_DIST_INCREMENT = 60.0;
-const float SPEED_INCREMENT = 5;
-
-void keyboard( unsigned char key, int x, int y )
+float theta = 0;
+void Visualizer::keyboard( unsigned char key, int x, int y )
 {
-    switch (key) {
-        case 033:
-        case 'q': case 'Q':
-            exit(EXIT_SUCCESS);
-            break;
-		case 'a': // move left 0.25 units
-			position = position + MIN_DIST_INCREMENT * normalize(cross(up, direction));
-			break;
-		case 'd': // move right 0.25 units
-			position = position - MIN_DIST_INCREMENT * normalize(cross(up, direction));
-			break;
-		case 'w': // camera 'moves' upward
-			position.y += MIN_DIST_INCREMENT;
-			break;
-		case 's': // camera 'moves' downward
-			position.y -= MIN_DIST_INCREMENT;
-			break;
-		case ' ': // reset
-			position  = point4(-10, 8, 15, 1.0);
-			at        = point4( 0.0, 0.0, 0.0, 1.0 );
-			up        = point4( 0.0, 1.0, 0.0, 0.0 );
-            direction = at - position;
-			zNear     = 1.0f;
-			zFar	  = 30.0f;
-			break;
-		case 'u': // pivot upward
-			direction = RotateX(1.0) * direction;
-			break;
-		case 'j': // pivot upward
-			direction = RotateX(-1.0) * direction;
-			break;
-	   default:
-            break;
-
-		glutPostRedisplay();
-    }
+    point4 p;
+    switch (key) 
+	{
+    case 033:
+    case 'q': case 'Q':
+    exit(EXIT_SUCCESS);
+    break;
+        case 'a': // move left 0.25 units
+                position = position + MIN_DIST_INCREMENT * normalize(cross(up, direction));             
+                break;
+        case 'd': // move right 0.25 units
+                position = position - MIN_DIST_INCREMENT * normalize(cross(up, direction));     
+                break;          
+        case 'w': // camera 'moves' upward
+                position.y += MIN_DIST_INCREMENT;               
+                break;          
+        case 's': // camera 'moves' downward
+                position.y -= MIN_DIST_INCREMENT;               
+                break;  
+        case ' ': // reset
+                position  = point4(-10, 8, 15, 1.0);
+                at        = point4( 0.0, 0.0, 0.0, 1.0 );
+                up        = point4( 0.0, 1.0, 0.0, 0.0 );
+				direction = at - position;                  
+                zNear     = 1.0f;
+                zFar      = 30.0f;
+                break;
+        default:
+        break;                
+    }                              
+    glutPostRedisplay();
 }
 
-void SpecialKeys(int key, int x, int y)
+void Visualizer::SpecialKeys(int key, int x, int y) 
 // special function for arrow keys
 {
     switch (key)
-	{
+    {
 		case GLUT_KEY_LEFT:  // camera 'heads' left one degree
-			direction = RotateY(1.0) * direction;
-			break;
+				direction = RotateY(1.0) * direction;                   
+				break;
 		case GLUT_KEY_RIGHT: // camera 'heads' right one degree
-			direction = RotateY(-1.0) * direction;
-			break;
+				direction = RotateY(-1.0) * direction;                  
+				break;          
 		case GLUT_KEY_DOWN: // move backward 0.25 units
-			position = position - speed * normalize(direction);
-            cerr << "Before: " << speed << endl;
-			if (speed < MAX_DIST_INCREMENT)
-				speed += SPEED_INCREMENT;
-            cerr << "After: " << speed << endl;
-            cerr << "Max Dist " << MAX_DIST_INCREMENT << endl;
-            cerr << "Speed INC " << SPEED_INCREMENT << endl;
-			break;
+				position = position - speed * normalize(direction);     
+				if (speed < MAX_DIST_INCREMENT)
+						speed += SPEED_INCREMENT;
+				break;      
 		case GLUT_KEY_UP:   // move forward 0.25 units
-			position = position + speed * normalize(direction);
-			if (speed < MAX_DIST_INCREMENT)
-				speed += SPEED_INCREMENT;
-			break;
-	}
-	glutPostRedisplay();
+				position = position + speed * normalize(direction);     
+				if (speed < MAX_DIST_INCREMENT)
+						speed += SPEED_INCREMENT;
+				break;  
+	}    
+    glutPostRedisplay();
 }
 
-void Release(int key, int x, int y)
+void Visualizer::Release(int key, int x, int y) 
 // special function to reset speed if user releases key
 {
     switch (key)
-	{
-	case GLUT_KEY_UP:
-	case GLUT_KEY_DOWN:
-		speed = MIN_DIST_INCREMENT;
-		cerr << "Released!" << endl;
-		break;
-	}
-
-	glutPostRedisplay();
+    {
+    case GLUT_KEY_UP:               
+    case GLUT_KEY_DOWN:             
+            speed = MIN_DIST_INCREMENT;
+            break;
+    }
+    glutPostRedisplay();
 }
 
-
-float p1time = .04;
-float p2time = .04;
-float p3time = 120;
-float p4time = 300;
-bool descent1 = false;
-bool descent2 = true;
-void idle()
+void Visualizer::idle()
 {
-	if (descent1 == false)
-	{
-		py1 += p1time/2;
-		p1time += 0.002;
-		if (p1time > .05)
-		{
-			descent1 = true;
-		}
-	}
-	else if (descent1 == true)
-	{
-		py1 -= p1time/2;
-		p1time -= 0.002;
-		if (p1time < .03)
-		{
-			descent1 = false;
-		}
-	}
+    if (descent1 == false)
+    {
+        py1 += p1time/2;
+        p1time += 0.002f;
+        if (p1time > .05)
+        {
+            descent1 = true;
+        }
+    }
+    else if (descent1 == true)
+    {
+        py1 -= p1time/2;
+        p1time -= 0.002f;
+        if (p1time < .03)
+        {
+            descent1 = false;
+        }
+    }
 
-	if (descent2 == false)
-	{
-		py2 += p2time/2;
-		p2time += 0.001;
-		if (p2time > .05)
-		{
-			descent2 = true;
-		}
-	}
-	else if (descent2 == true)
-	{
-		py2 -= p2time/2;
-		p2time -= 0.001;
-		if (p2time < .03)
-		{
-			descent2 = false;
-		}
-	}
-
-	glutPostRedisplay();
-
+    if (descent2 == false)
+    {
+        py2 += p2time/2;
+        p2time += 0.001f;
+        if (p2time > .05)
+        {
+            descent2 = true;
+        }
+    }
+    else if (descent2 == true)
+    {
+        py2 -= p2time/2;
+        p2time -= 0.001f;
+        if (p2time < .03)
+        {
+            descent2 = false;
+        }
+    }
+        
+    glutPostRedisplay();    
 }
 
-int getConnection()
+int Visualizer::getConnection()
 {
-	// Variables for finding socket
-	struct addrinfo hints, *servinfo, *ptr;
-	int rv;
-	int connectFD;
+    // Variables for finding socket
+    struct addrinfo hints, *servinfo, *ptr;
+    int rv;
+    int connectFD = -1;
 
-	// Fill in hint struct
-	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_PASSIVE;
+    // Fill in hint struct
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
 
-	// Variables for host and port
-	string host = "mars.seas.ucla.edu";
-	string port = "12345";
+    // Variables for host and port
+    string host = "mars.seas.ucla.edu";
+    string port = "12345";
 
-	// Get the candidate socket info structs
-	if ((rv = getaddrinfo(host.c_str(), port.c_str(),
-						  &hints, &servinfo)) != 0)
-	{
-		string s = gai_strerror(rv);
-		s += "\nHostname: " + host + "\nPort: " + port;
-		cerr << "getaddrinfo: " << s << endl;
-		return -1;
-		//throw ConnectionException("getaddrinfo: " + s, -1, -1);
-	}
+    // Get the candidate socket info structs
+    if ((rv = getaddrinfo(host.c_str(), port.c_str(),
+                                                &hints, &servinfo)) != 0)
+    {
+        string s = gai_strerror(rv);
+        s += "\nHostname: " + host + "\nPort: " + port;
+        cerr << "getaddrinfo: " << s << endl;
+        return -1;
+        //throw ConnectionException("getaddrinfo: " + s, -1, -1);
+    }
 
-	// Iterate through socket info struct list until one is found
-	// which creates a socket and connects
-	for (ptr = servinfo; ptr != NULL; ptr = ptr->ai_next)
-	{
-		connectFD = socket(ptr->ai_family, ptr->ai_socktype,
-						   ptr->ai_protocol);
+    // Iterate through socket info struct list until one is found
+    // which creates a socket and connects
+    for (ptr = servinfo; ptr != NULL; ptr = ptr->ai_next)
+    {
+        connectFD = socket(ptr->ai_family, ptr->ai_socktype,
+                                            ptr->ai_protocol);
+        if (connectFD == -1)
+        {
+                continue;
+        }
+        if (connect(connectFD, ptr->ai_addr, ptr->ai_addrlen) == -1)
+        {
+                close(connectFD);
+                continue;
+        }
+        break;
+    }
 
-		if (connectFD == -1)
-		{
-			continue;
-		}
+    // Free allocated memory regardless of success
+    freeaddrinfo(servinfo);
 
-		if (connect(connectFD, ptr->ai_addr, ptr->ai_addrlen) == -1)
-		{
-			close(connectFD);
-			continue;
-		}
-
-		break;
-	}
-
-	// Free allocated memory regardless of success
-	freeaddrinfo(servinfo);
-
-	// Check success
-	if (ptr == NULL)
-	{
+    // Check success
+    if (ptr == NULL)
+    {
 		cerr << "Could not create the socket" << endl;
 		return -1;
-	}
+    }
 
-	// Return connection file descriptor
-	return connectFD;
+    // Return connection file descriptor
+    return connectFD;
 }
 
-void mainReadLoop(int connectFD)
-{
-	int x = 0, y = 1, z = 2, mass = 3;
-	std::ifstream file;
-	file.open("positions.txt");
-	if (!file.is_open() )
-	{
-		return;
-	}
-	
-	while(1)
-	{
-		// Polling approach sucks, but blocking is hard
-		while(writePos <= readPos && readPos < (writePos + numParticles))
-			;	// Wait until there is room to write
-		while (!file.eof())
-		{
-			file >> (*writePos)[x] >> (*writePos)[y] >> 
-					(*writePos)[z] >> (*writePos)[mass];
-			writePos++;
-		}
-		file.seekg(0);
-		if((writePos - positions) >= bufferSize)
-			writePos = positions;
-	}
+void Visualizer::mainReadLoop(int connectFD)
+{        
+    int x = 0, y = 1, z = 2, mass = 3;
+    std::ifstream file;
+    file.open("positions.txt");
+    if (!file.is_open() )
+    {
+        return;
+    }
+    while(1)
+    {
+        // Polling approach sucks, but blocking is hard
+        while(writePos <= readPos && readPos < (writePos + numParticles))
+                ;       // Wait until there is room to write
+        while (!file.eof())
+        {
+            file >> (*writePos)[x] >> (*writePos)[y] >>
+                            (*writePos)[z] >> (*writePos)[mass];
+            writePos++;
+        }
+        file.seekg(0);
+        if((writePos - positions) >= bufferSize)
+                writePos = positions;
+    }
 }
 
-void registerWithSimulation()
+void Visualizer::registerWithSimulation()
 {
-	int connectFD = getConnection();
-	cout << connectFD << endl;
-	if(connectFD == -1)
-	{
-		// Do stuff with connectFD
-		numParticles = 11;
-		bufferSize = 3 * numParticles;
-		positions = new float*[bufferSize];
-		for(int i = 0; i < bufferSize; i++)
-		{
-			positions[i] = new float[4];
-		}
-		readPos = positions;
-		writePos = positions;
-		
-		std::ifstream file;
-		file.open("positions.txt");
-		if (!file.is_open() )
-		{
-			return;
-		}
-		
-		int x = 0, y = 1, z = 2, mass = 3;
-		while (!file.eof())
-		{
-			file >> (*writePos)[x] >> (*writePos)[y] >> 
-					(*writePos)[z] >> (*writePos)[mass];
-			writePos++;
-		}
-		ready = true;
-		file.close();
-		mainReadLoop(connectFD);
-	}
-	else
-	{
-		abort();
-	}
+    int connectFD = getConnection();
+    cout << connectFD << endl;
+    if(connectFD == -1)
+    {
+        // Do stuff with connectFD        
+        numParticles = 11;
+        bufferSize = 3 * numParticles;
+        positions = new float*[bufferSize];
+        for(int i = 0; i < bufferSize; i++)
+        {
+            positions[i] = new float[4];
+        }
+        readPos = positions;
+        writePos = positions;        
+        std::ifstream file;
+        file.open("positions.txt");
+        if (!file.is_open() )
+        {            
+            return;
+        }
+
+        int x = 0, y = 1, z = 2, mass = 3;        
+        while (!file.eof())
+        {
+            file >> (*writePos)[x] >> (*writePos)[y] >>
+                            (*writePos)[z] >> (*writePos)[mass];
+            writePos++;            
+        }
+        ready = true;
+        file.close();        
+        mainReadLoop(connectFD);        
+    }
+    else
+    {
+         abort();
+    }
 }
 
-void visualize()
-{
-	glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
-	glutInitWindowPosition(100, 50);
-	glutInitWindowSize(800, 600);
+void Visualizer::visualize()
+{ 
+    glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
+    glutInitWindowPosition(100, 50);
+    glutInitWindowSize(800, 600);
     glutCreateWindow( "Sphere" );
-
+    
 #ifndef __APPLE__  // include Mac OS X verions of headers
-	glewInit();
+    glewInit();
 #endif
-
-	init();
-
+        
+    init();
+    
     glutDisplayFunc(display);
-	glutIdleFunc(idle);
+    glutIdleFunc(idle);
     glutReshapeFunc(reshape);
     glutKeyboardFunc(keyboard);
-	glutSpecialFunc(SpecialKeys); // special function for arrow keys
-	glutSpecialUpFunc(Release);
-
+    glutSpecialFunc(SpecialKeys); // special function for arrow keys
+    glutSpecialUpFunc(Release);
+    
     glutMainLoop();
-
 }
 
 int main (int argc, char *argv[] )
-{
+{       
     glutInit( &argc, argv );
-    boost::thread dataThread = boost::thread(registerWithSimulation);
-    boost::thread visualizerThread = boost::thread(visualize);
-
-    visualizerThread.join();
-    dataThread.join();
+    Visualizer visualizer;
+    boost::thread dataThread = boost::thread(boost::bind(&Visualizer::registerWithSimulation), &visualizer);
+    visualizer.visualize();
+    dataThread.join();               
     return 0;
 }
 
