@@ -58,8 +58,9 @@ public:
 	virtual void activate();
 	virtual void setParams(NBodyParams* inparam){param=*inparam;}
 	virtual void init();
-	virtual void step(float indt);
-
+    //added
+	virtual void step(float indt,int di);
+    //end
 private:
 
 	void randomizeBodies(int config);
@@ -67,7 +68,8 @@ private:
 	void gpuComputeNBodyGravitation();
 	void bodyBodyInteraction(float accel[3], float posMass0[4], float posMass1[4], float softeningSquared);
 	void integrateNBodySystem(float deltaTime);
-	void gpuIntegrateNBodySystem(float deltaTime);
+//added
+	void gpuIntegrateNBodySystem(float deltaTime,int di);
 
 	// Host Pointers
 	float* h_pos;		//Particle Positions Array on Host

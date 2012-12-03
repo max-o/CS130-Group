@@ -12,6 +12,11 @@
 #include <helper_cuda.h>
 #endif
 
+//added
+extern float buffer[8][4096*4];
+bool flag[8];
+//end
+
 MultiNBodyDomain::MultiNBodyDomain():Domain(),np(0)
 {
 	// TODO Auto-generated constructor stub
@@ -68,11 +73,29 @@ void MultiNBodyDomain::init(){
 	if(isActive())randomizeBodies(setcfg);
 }
 
-void MultiNBodyDomain::step(float indt){
+void MultiNBodyDomain::step(float indt,int di){
 	if(isActive()){
-		if(onGpu()) gpuIntegrateNBodySystem(indt);
+		if(onGpu()) gpuIntegrateNBodySystem(indt,di);
 		else integrateNBodySystem(indt);
 
+<<<<<<< HEAD
+=======
+    //added
+  /*      memcpy(buffer[di],h_pos,4096*4);*/
+        flag[di]=true;
+      /*
+        for(int i=0;i<4096;i=i+500)
+        {
+            if(i>=4096) break;
+        printf("Point %d: %f,%f,%f,%f\n",i,buffer[di][i*4+0],buffer[di][i*4+1],buffer[di][i*4+2],buffer[di][i*4+3]);
+        }
+        printf("Out of domain");
+*/
+
+        printf("Domain %d is done\n",di);
+    //end
+    
+>>>>>>> simpleNBody2-after each iteration store data in a global buffer
 		// To use force calculation only on GPU simply call:
 		//integrateNBodySystem(indt);
 		// Note: Thread block sizes not updated for arbitrary np in force calculator kernel call -- use power of 2
@@ -363,6 +386,9 @@ void MultiNBodyDomain::bodyBodyInteraction(float accel[3], float posMass0[4], fl
 
 void MultiNBodyDomain::integrateNBodySystem(float deltaTime)
 {
+//added
+printf("test!!!!!!!!!!");
+//end
     if(onGpu()) gpuComputeNBodyGravitation();
     else computeNBodyGravitation();
 
@@ -469,8 +495,8 @@ __global__ void integrateBodies(float4* newPos,
         vel[index]    = velocity;
     }
 }
-
-void MultiNBodyDomain::gpuIntegrateNBodySystem(float deltaTime)
+//added
+void MultiNBodyDomain::gpuIntegrateNBodySystem(float deltaTime,int di)
 {
     cudaDeviceProp props;
 
@@ -529,6 +555,13 @@ void MultiNBodyDomain::gpuIntegrateNBodySystem(float deltaTime)
 	int currentRead=theWorld->getIter()%2;
 
 	//cudaMemcpyAsync(h_pos,d_pos[currentRead],4*np*sizeof(float),cudaMemcpyDeviceToHost,0);
+    
+
+    //added
+    cudaMemcpy(buffer[di],d_pos[currentRead],4*np*sizeof(float),cudaMemcpyDeviceToHost);
+    //
+    
+
 	cudaMemcpy(h_pos,d_pos[currentRead],4*np*sizeof(float),cudaMemcpyDeviceToHost);
 
 	integrateBodies<<< grid, threads, sharedMemSize >>>
