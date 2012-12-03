@@ -232,10 +232,10 @@ void Visualizer::display( void )
         
 		// MICHAEL: Made a change to condition from writePos <= to writePos <,
 		// so that we redraw the current buffer if next buffer isn't available
-        if(readPos < writePos && writePos < (readPos + numParticles))
+        if(readPos <= writePos && writePos < (readPos + numParticles))
         {         
             readPos = readPos + (2 * numParticles);
-            if((readPos - positions) > bufferSize)
+            if((readPos - positions) >= bufferSize)
                     readPos -= bufferSize;
         }
 
@@ -255,7 +255,7 @@ void Visualizer::display( void )
         }
         if((readPos - positions) >= bufferSize)
         {         
-                readPos = positions;
+                readPos -= bufferSize;
         }
 
         glutSwapBuffers();
