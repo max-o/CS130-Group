@@ -9,7 +9,7 @@ Setup Instructions
 2. Now set your linker path include the libraries either on your own or by 
 executing the following command:
 
-		export  LD_LIBRARY_PATH=$PWD/boost_1_52_0/stage/lib:$PWD/freeglut-2.6.0/install/lib:$PWD/glew-1.9.0/lib:\$LD_LIBRARY_PATH
+		export  LD_LIBRARY_PATH=$PWD/boost_1_52_0/stage/lib:$PWD/freeglut-2.6.0/install/lib:$PWD/glew-1.9.0/lib:$LD_LIBRARY_PATH
 
 ===============================================================================
 
