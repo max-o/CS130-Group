@@ -154,17 +154,17 @@ void registrationThreadRoutine()
 	}
 }
 
+<<<<<<< HEAD
+=======
 
 
+>>>>>>> cee34c3166213b5db3bc6eb76313da3a93961214
 int main(int argc, char** argv)
 {
 	// Initialize boost threads
 	boost::thread registrationThread = boost::thread(registrationThreadRoutine);
 
 	// Initialize MPI
-    
-
-    
 	int rank, numprocs;
 	MPI_Comm comm_main;
 	MPI_Init(&argc,&argv);
