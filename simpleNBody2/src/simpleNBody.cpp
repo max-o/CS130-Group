@@ -118,10 +118,7 @@ void registrationThreadRoutine()
 	}
 }
 
-//added
-float buffer[8][4096*4];
-bool flag[8]={false};
-//end
+
 
 int main(int argc, char** argv)
 {
