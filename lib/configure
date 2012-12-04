@@ -3,12 +3,14 @@
 #configure freeglut libraries
 cd freeglut-2.6.0
 ./configure --prefix=$PWD/install
+make clean
 make
 make install
 cd ..
 
 #configure glew libraries
 cd glew-1.9.0
+make clean
 make
 cd ..
 
@@ -19,6 +21,6 @@ cd boost_1_52_0
 cd ..
 
 echo Done configuring libraries!
-echo Please set your linker path environment variable to
-echo LD_LIBRARY_PATH=$PWD/boost_1_52_0/stage/lib:$PWD/freeglut-2.6.0/install/lib:$PWD/glew-1.9.0/lib:\$LD_LIBRARY_PATH
+echo Please set your linker path environment variable by running the command
+echo export LD_LIBRARY_PATH=$PWD/boost_1_52_0/stage/lib:$PWD/freeglut-2.6.0/install/lib:$PWD/glew-1.9.0/lib:\$LD_LIBRARY_PATH
 echo Thanks!

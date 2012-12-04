@@ -31,7 +31,7 @@ GLUT_LIB_PATH = ../lib/freeglut-2.6.0/install/lib
 GLEW_INC_PATH = ../lib/glew-1.9.0/include
 GLEW_LIB_PATH = ../lib/glew-1.9.0/lib
 
-CFLAGS = -Wall 
+CFLAGS = #-Wall
 INCLUDES = -I$(BOOST_INC_PATH) -I$(GLUT_INC_PATH) -I$(GLEW_INC_PATH)
 LDFLAGS =  -s -L$(BOOST_LIB_PATH) -L$(GLUT_LIB_PATH) -L$(GLEW_LIB_PATH)
 RCFLAGS = 

@@ -27,16 +27,34 @@ using namespace std;
 boost::mutex visLock;				// Lock on visualizer vector
 vector<int> registeredVisualizers;	// visualizer vector
 int numParticles = 4096;			// number of particles to send each cycle
+int listenSocket;
+
+void cleanup()
+{
+	// close sockets
+	close(listenSocket);
+	
+	// Still need to lock: but if we can't get it we already have it
+	// (Thread can be interrupted while holding the lock)
+	visLock.try_lock();
+	for(vector<int>::iterator i = registeredVisualizers.begin(); 
+		i != registeredVisualizers.end(); i++)
+	{
+		close(*i);
+		registeredVisualizers.erase(i);
+	}
+	visLock.unlock();
+}
 
 void sendData(float *buf)
 {
 	int numTries = 1;
 	int bytesWritten = 0;
 	int bytesToWrite = numParticles;
-	for_each(vector::iterator i = registeredVisualizers.begin(); i != registeredVisualizers.end(); i++)
+	for(vector<int>::iterator i = registeredVisualizers.begin(); i != registeredVisualizers.end(); i++)
 	{
 		int connectFD = *i;
-		while((bytesWritten = write(connectFD, (buf + bytesWritten), (bytesToWrite - bytesWritten))) < bytesToWrite)
+		while((bytesWritten += write(connectFD, (buf + bytesWritten), (bytesToWrite - bytesWritten))) < bytesToWrite)
 		{
 			numTries++;
 			fprintf(stderr, "Wrote %d bytes so far\n", bytesWritten);
@@ -48,16 +66,19 @@ void sendData(float *buf)
 void registerVisualizer(int connectFD)
 {
 	visLock.lock();
-	registeredVisualizers.push_back(connectFD);
-	int numTries = 1;
 	int bytesWritten = 0;
 	string np = boost::lexical_cast<string>(numParticles);
 	int bytesToWrite = np.length();
-	while((bytesWritten = write(connectFD, np.substr(bytesWritten).c_str(), (bytesToWrite - bytesWritten))) < bytesToWrite)
+	if((bytesWritten = write(connectFD, np.c_str(), bytesToWrite)) == bytesToWrite)
 	{
-		numTries++;
+		// Visualizer connected and ready
+		registeredVisualizers.push_back(connectFD);
 	}
-	fprintf(stderr, "Wrote number of particles after %d tries!\n", numTries);
+	else
+	{
+		// Could not write bytes to visualizer
+		close(connectFD);
+	}
 	for(int i = 0; i < registeredVisualizers.size(); i++)
 		fprintf(stderr, "Visualizer %d in queue\n", registeredVisualizers[i]);
 	visLock.unlock();
@@ -70,7 +91,6 @@ void registrationThreadRoutine()
 	struct addrinfo hints, *ptr;
 	int rv;
 	int connectFD;
-	int listenSocket;
 	struct addrinfo *servinfo;
 
 	try
@@ -139,14 +159,13 @@ void registrationThreadRoutine()
 	}
 	catch(boost::thread_interrupted thrdEx)
 	{
-		// close the listen socket and exit
-		close(listenSocket);
+		cleanup();
 		return;
 	}
 	catch(char ex)
 	{
 		// Listen socket exception
-		// No point in simulating if nobody's listening
+		// No point in simulating if nobody's able to listen
 		if(ex == 'l')
 		{
 			abort();

@@ -49,7 +49,7 @@ public:
 	static void registerWithSimulation();//boost::thread visualizerThread;
 
 private:
-       
+	   
 	static GLuint program;
 	static point4 points[NUM_VERTICES * 5];
 	static vec3   normals[NUM_VERTICES * 5];
@@ -66,9 +66,9 @@ private:
 	static GLfloat zFar;
 
 	// Ring buffer
-	static float **positions;
-	static float **readPos;
-	static float **writePos;
+	static float *positions;
+	static float *readPos;
+	static float *writePos;
 	static int numParticles;
 	static int bufferSize;
 	static bool ready;
@@ -89,3 +89,4 @@ private:
 
 
 #endif
+
