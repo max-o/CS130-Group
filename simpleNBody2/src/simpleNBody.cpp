@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <boost/thread.hpp>
+#include <boost/lexical_cast.hpp>
 #include "MultiNBodyWorld.h"
 #include <mpi.h>
 // Socket includes
@@ -16,15 +17,50 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <netdb.h>
+#include <vector>
 
 using namespace std;
 
 // 5 waiting visualizers seems reasonable
 #define QUEUESIZE 5
 
+boost::mutex visLock;				// Lock on visualizer vector
+vector<int> registeredVisualizers;	// visualizer vector
+int numParticles = 4096;			// number of particles to send each cycle
+
+void sendData(float *buf)
+{
+	int numTries = 1;
+	int bytesWritten = 0;
+	int bytesToWrite = numParticles;
+	for_each(vector::iterator i = registeredVisualizers.begin(); i != registeredVisualizers.end(); i++)
+	{
+		int connectFD = *i;
+		while((bytesWritten = write(connectFD, (buf + bytesWritten), (bytesToWrite - bytesWritten))) < bytesToWrite)
+		{
+			numTries++;
+			fprintf(stderr, "Wrote %d bytes so far\n", bytesWritten);
+		}
+		fprintf(stderr, "Wrote number of particles after %d tries!\n", numTries);
+	}
+}
+
 void registerVisualizer(int connectFD)
 {
-	fprintf(stdout, "Registered visualizer on socket %d\n", connectFD);
+	visLock.lock();
+	registeredVisualizers.push_back(connectFD);
+	int numTries = 1;
+	int bytesWritten = 0;
+	string np = boost::lexical_cast<string>(numParticles);
+	int bytesToWrite = np.length();
+	while((bytesWritten = write(connectFD, np.substr(bytesWritten).c_str(), (bytesToWrite - bytesWritten))) < bytesToWrite)
+	{
+		numTries++;
+	}
+	fprintf(stderr, "Wrote number of particles after %d tries!\n", numTries);
+	for(int i = 0; i < registeredVisualizers.size(); i++)
+		fprintf(stderr, "Visualizer %d in queue\n", registeredVisualizers[i]);
+	visLock.unlock();
 }
 
 void registrationThreadRoutine()
@@ -118,20 +154,12 @@ void registrationThreadRoutine()
 	}
 }
 
-//added
-float buffer[8][4096*4];
-bool flag[8]={false};
-//end
-
 int main(int argc, char** argv)
 {
 	// Initialize boost threads
 	boost::thread registrationThread = boost::thread(registrationThreadRoutine);
 
 	// Initialize MPI
-    
-
-    
 	int rank, numprocs;
 	MPI_Comm comm_main;
 	MPI_Init(&argc,&argv);

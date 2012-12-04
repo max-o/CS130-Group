@@ -24,14 +24,18 @@ CFLAGS_C = $(filter-out -include "sdk.h",$(CFLAGS))
 
 BOOST_INC_PATH = ../lib/boost_1_52_0
 BOOST_LIB_PATH = ../lib/boost_1_52_0/stage/lib
-GLUT_LIB_PATH = /usr/local/lib
+
+GLUT_INC_PATH = ../lib/freeglut-2.6.0/install/include
+GLUT_LIB_PATH = ../lib/freeglut-2.6.0/install/lib
+
+GLEW_INC_PATH = ../lib/glew-1.9.0/include
 GLEW_LIB_PATH = ../lib/glew-1.9.0/lib
 
 CFLAGS = -Wall 
-INCLUDES = -I$(BOOST_INC_PATH)
+INCLUDES = -I$(BOOST_INC_PATH) -I$(GLUT_INC_PATH) -I$(GLEW_INC_PATH)
 LDFLAGS =  -s -L$(BOOST_LIB_PATH) -L$(GLUT_LIB_PATH) -L$(GLEW_LIB_PATH)
 RCFLAGS = 
-LDLIBS = $(T_LDLIBS) -lGL /usr/local/lib/libglut.a /usr/lib/x86_64-linux-gnu/libX11.a ../lib/glew-1.9.0/lib/libGLEW.a ../lib/boost_1_52_0/stage/lib/libboost_thread.a ../lib/boost_1_52_0/stage/lib/libboost_system.a -lstdc++
+LDLIBS = $(T_LDLIBS) -lGL -lglut -lX11 -lGLEW -lboost_thread -lboost_system -lstdc++
 
 LINK_exe = gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)
 LINK_con = gcc -o $@ $^ $(LDFLAGS) $(LDLIBS)

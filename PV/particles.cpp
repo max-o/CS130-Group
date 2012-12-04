@@ -494,7 +494,7 @@ void Visualizer::mainReadLoop(int connectFD)
 void Visualizer::registerWithSimulation()
 {
     int connectFD = getConnection();
-    cout << connectFD << endl;
+    cerr << "Connected on socket " << connectFD << endl;
     if(connectFD == -1)
     {
         // Do stuff with connectFD        
@@ -506,7 +506,7 @@ void Visualizer::registerWithSimulation()
             positions[i] = new float[4];
         }
         readPos = positions;
-        writePos = positions;        
+        writePos = positions;
         std::ifstream file;
         file.open("positions.txt");
         if (!file.is_open() )
@@ -527,7 +527,19 @@ void Visualizer::registerWithSimulation()
     }
     else
     {
-         abort();
+        int bytesRead = 0;
+        char numberBuffer[10];
+        // Make one read: simulation should report number of particles
+        if((bytesRead = read(connectFD, numberBuffer, 9)) > 0)
+        {
+        	cerr << "Number of particles = " << numberBuffer << endl;
+        }
+        else
+        {
+        	cerr << "Could not read number of particles" 
+        			<< endl << "Shutting down" << endl;
+        	abort();
+        }
     }
 }
 
