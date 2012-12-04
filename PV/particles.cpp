@@ -29,7 +29,7 @@
 #  include <GL/freeglut_ext.h>
 #endif  // __APPLE__
 
-#define CONNECTING
+//#define CONNECTING
 
 using namespace std;
 
@@ -82,6 +82,7 @@ bool	Visualizer::ready = false;
 
 Visualizer::Visualizer()
 {
+	positions = NULL;
 }
 
 void Visualizer::triangle( const point4& a, const point4& b, const point4& c )
@@ -517,72 +518,91 @@ void Visualizer::mainReadLoop(int connectFD)
 
 void Visualizer::registerWithSimulation()
 {
-#ifdef CONNECTING
-	int connectFD = getConnection();
-	cerr << "Connected on socket " << connectFD << endl;
-	if(connectFD != -1)
+	int connectFD = -1;
+	#ifndef CONNECTING
+	std::ifstream file;
+	#endif
+	try
 	{
-		int bytesRead = 0;
-		char numberBuffer[10];
-		// Make one read: simulation should report number of particles
-		if((bytesRead = read(connectFD, numberBuffer, 9)) > 0)
+	#ifdef CONNECTING
+		int connectFD = getConnection();
+		cerr << "Connected on socket " << connectFD << endl;
+		if(connectFD != -1)
 		{
-			cerr << "Number of particles = " << numberBuffer << endl;
+			int bytesRead = 0;
+			char numberBuffer[10];
+			// Make one read: simulation should report number of particles
+			if((bytesRead = read(connectFD, numberBuffer, 9)) > 0)
+			{
+				cerr << "Number of particles = " << numberBuffer << endl;
+			}
+			else
+			{
+				cerr << "Could not read number of particles" 
+						<< endl << "Shutting down" << endl;
+				abort();
+			}
+			numberBuffer[bytesRead] = '\0';
+			numParticles = boost::lexical_cast<int>(numberBuffer);
+			bufferSize = 3 * numParticles * 4;
+			positions = new float[bufferSize];
+			writePos = positions;
+			readPos = positions;
+		
+			int bytesCopied = 0;
+			int bytesToCopy = numParticles * 4 * sizeof(float);
+		
+			while ((bytesCopied = read(connectFD, writePos, bytesToCopy)) < 
+					bytesToCopy)
+			{
+				bytesToCopy -= bytesCopied;
+				writePos += bytesCopied;
+			}
+			ready = true;
+			mainReadLoop(connectFD);
 		}
 		else
 		{
-			cerr << "Could not read number of particles" 
+			cerr << "Could open connection to simulation" 
 					<< endl << "Shutting down" << endl;
 			abort();
 		}
-		numberBuffer[bytesRead] = '\0';
-		numParticles = boost::lexical_cast<int>(numberBuffer);
+	#else // (not) CONNECTING
+		// Read from file instead
+		numParticles = 11;
 		bufferSize = 3 * numParticles * 4;
 		positions = new float[bufferSize];
-		
-		int bytesCopied = 0;
-		int bytesToCopy = numParticles * 4 * sizeof(float);
-		
-		while ((bytesCopied = read(connectFD, writePos, bytesToCopy)) < 
-				bytesToCopy)
+		readPos = positions;
+		writePos = positions;
+		file.open("positions.txt");
+		if (!file.is_open() )
 		{
-			bytesToCopy -= bytesCopied;
-			writePos += bytesCopied;
+			return;
+		}
+
+		int x = 0, y = 1, z = 2, mass = 3;        
+		while (!file.eof())
+		{
+			file >> writePos[x] >> writePos[y] >>
+							writePos[z] >> writePos[mass];
+			writePos+= 4;
 		}
 		ready = true;
-		mainReadLoop(connectFD);
+		file.close();
+		mainReadLoop(-1);
+	#endif // CONNECTING
 	}
-	else
+	catch(boost::thread_interrupted thrdEx)
 	{
-		cerr << "Could open connection to simulation" 
-				<< endl << "Shutting down" << endl;
-		abort();
+		if(connectFD != -1)
+			close(connectFD);
+		if(positions != NULL)
+			delete positions;
+		#ifndef CONNECTING
+		if(file.is_open())
+			file.close();
+		#endif
 	}
-#else
-	// Do stuff with connectFD
-	numParticles = 11;
-	bufferSize = 3 * numParticles * 4;
-	positions = new float[bufferSize];
-	readPos = positions;
-	writePos = positions;
-	std::ifstream file;
-	file.open("positions.txt");
-	if (!file.is_open() )
-	{
-		return;
-	}
-
-	int x = 0, y = 1, z = 2, mass = 3;        
-	while (!file.eof())
-	{
-		file >> writePos[x] >> writePos[y] >>
-						writePos[z] >> writePos[mass];
-		writePos+= 4;
-	}
-	ready = true;
-	file.close();
-	mainReadLoop(-1);
-#endif
 }
 
 void Visualizer::visualize()
@@ -614,7 +634,7 @@ int main (int argc, char *argv[] )
 	Visualizer visualizer;
 	boost::thread dataThread = boost::thread(boost::bind(&Visualizer::registerWithSimulation), &visualizer);
 	visualizer.visualize();
-	dataThread.join();
+	dataThread.interrupt();
 	return 0;
 }
 
