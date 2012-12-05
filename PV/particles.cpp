@@ -29,7 +29,7 @@
 #  include <GL/freeglut_ext.h>
 #endif  // __APPLE__
 
-//#define CONNECTING
+#define CONNECTING
 
 using namespace std;
 
@@ -484,6 +484,14 @@ void Visualizer::mainReadLoop(int connectFD)
 		while ((bytesCopied = read(connectFD, writePos, bytesToCopy)) < 
 				bytesToCopy)
 		{
+			if(bytesCopied <= 0)
+			{
+				// Connection was closed: Time to end
+				close(connectFD);
+				cout << "Connection closed by simulation" << endl <<
+					"Shutting Down" << end;
+				exit(0);
+			}
 			bytesToCopy -= bytesCopied;
 			writePos += bytesCopied;
 		}
@@ -525,7 +533,7 @@ void Visualizer::registerWithSimulation()
 	try
 	{
 	#ifdef CONNECTING
-		int connectFD = getConnection();
+		connectFD = getConnection();
 		cerr << "Connected on socket " << connectFD << endl;
 		if(connectFD != -1)
 		{
@@ -534,17 +542,29 @@ void Visualizer::registerWithSimulation()
 			// Make one read: simulation should report number of particles
 			if((bytesRead = read(connectFD, numberBuffer, 9)) > 0)
 			{
+				numberBuffer[bytesRead] = '\0';
 				cerr << "Number of particles = " << numberBuffer << endl;
+				int bytesWritten = 0;
+				char ack[4] = "ACK";
+				int bytesToWrite = 4;
+				if((bytesWritten = write(connectFD, ack, bytesToWrite)) < bytesToWrite)
+				{
+					cerr << "Could not send acknowledgement" 
+							<< endl << "Shutting down" << endl;
+					exit(1);
+				}
+					// Success: Number of particles retrieved and ACK sent
 			}
 			else
 			{
 				cerr << "Could not read number of particles" 
 						<< endl << "Shutting down" << endl;
-				abort();
+				exit(1);
 			}
+			cerr << "Sent acknowledgement" << endl;
 			numberBuffer[bytesRead] = '\0';
 			numParticles = boost::lexical_cast<int>(numberBuffer);
-			bufferSize = 3 * numParticles * 4;
+			bufferSize = 3 * numParticles * 4 * sizeof(float);
 			positions = new float[bufferSize];
 			writePos = positions;
 			readPos = positions;
@@ -552,25 +572,37 @@ void Visualizer::registerWithSimulation()
 			int bytesCopied = 0;
 			int bytesToCopy = numParticles * 4 * sizeof(float);
 		
+			cerr << "Preparing to read" << endl;
 			while ((bytesCopied = read(connectFD, writePos, bytesToCopy)) < 
 					bytesToCopy)
 			{
+				if(bytesCopied <= 0)
+				{
+					// Connection was closed: Time to end
+					close(connectFD);
+					cout << "Connection closed by simulation" << endl <<
+						"Shutting Down" << end;
+					exit(0);
+				}
 				bytesToCopy -= bytesCopied;
 				writePos += bytesCopied;
+				cerr << "Read " << bytesCopied << " bytes this time" << endl;
 			}
+			cerr << "Ready to copy after " << bytesToCopy 
+				<< " bytes total read!" << endl;
 			ready = true;
 			mainReadLoop(connectFD);
 		}
 		else
 		{
 			cerr << "Could open connection to simulation" 
-					<< endl << "Shutting down" << endl;
-			abort();
+				<< endl << "Shutting down" << endl;
+			exit(1);
 		}
 	#else // (not) CONNECTING
 		// Read from file instead
 		numParticles = 11;
-		bufferSize = 3 * numParticles * 4;
+		bufferSize = 3 * numParticles * 4 * sizeof(float);
 		positions = new float[bufferSize];
 		readPos = positions;
 		writePos = positions;
