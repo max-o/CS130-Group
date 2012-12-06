@@ -25,8 +25,6 @@
 #  include <GL/freeglut_ext.h>
 #endif  // __APPLE__
 
-#define CONNECTING
-
 using namespace std;
 
 vec3   Visualizer::normals[NUM_VERTICES * 5];
@@ -74,7 +72,7 @@ float* Visualizer::readPos;
 float* Visualizer::writePos;
 int Visualizer::numParticles;
 int Visualizer::bufferSize;
-int Visualizer::bytesPerBuffer;
+int Visualizer::floatsPerBuffer;
 bool Visualizer::ready = false;
 
 const float CAMERA_INIT_DIST_X = -10.0;
@@ -237,13 +235,13 @@ void Visualizer::display( void )
 		
 		// MICHAEL: Made a change to condition from writePos <= to writePos <,
 		// so that we redraw the current buffer if next buffer isn't available
-		if(readPos <= writePos && 
-			writePos < (float *)((uint8_t *)readPos + bytesPerBuffer))
+		if(readPos < writePos && 
+			writePos < (readPos + floatsPerBuffer))
 		{
-			readPos = (float *)((uint8_t *)readPos + (2 * bytesPerBuffer));
+			readPos = (readPos + (2 * floatsPerBuffer));
 			if((readPos - positions) >= bufferSize)
 			{
-				readPos = (float *)((uint8_t *)readPos - bufferSize);
+				readPos = (readPos - bufferSize);
 			}
 		}
 
@@ -263,7 +261,7 @@ void Visualizer::display( void )
 		}
 		if((readPos - positions) >= bufferSize)
 		{
-			readPos = (float *)((uint8_t *)readPos - bufferSize);
+			readPos -= bufferSize;
 		}
 
 		glutSwapBuffers();
@@ -319,13 +317,9 @@ void Visualizer::keyboard( unsigned char key, int x, int y )
 				position.y -= MIN_DIST_INCREMENT;               
 				break;  
 		case ' ': // reset
-			#ifdef CONNECTING
 				position.x = at.x + CAMERA_INIT_DIST_X;
 				position.y = at.y + CAMERA_INIT_DIST_Y;
 				position.z = at.z + CAMERA_INIT_DIST_Z;
-			#else // not CONNECTING
-				position = point4(-10, 8, 15, 1.0);
-			#endif
 				up        = point4( 0.0, 1.0, 0.0, 0.0 );
 				direction = at - position;                  
 				zNear     = 1.0f;
@@ -480,16 +474,17 @@ int Visualizer::getConnection()
 
 void Visualizer::mainReadLoop(int connectFD)
 {
-#ifdef CONNECTING
+	// Do until interrupted (socket closes/thread is interrupted)
 	while(1)
 	{
 		int bytesCopied = 0;
-		int bytesToCopy = bytesPerBuffer;
+		int bytesToCopy = floatsPerBuffer;
 		
-		// Polling approach sucks, but blocking is hard
+		// Wait until there is room to write
 		while(writePos < readPos && readPos < (writePos + numParticles))
-				cerr << "Cycling!" << endl;// Wait until there is room to write
+		{	;}
 		
+		// Copy read bytes into buffer
 		while ((bytesCopied = read(connectFD, writePos, bytesToCopy)) < 
 				bytesToCopy)
 		{
@@ -504,69 +499,45 @@ void Visualizer::mainReadLoop(int connectFD)
 			bytesToCopy -= bytesCopied;
 			writePos += bytesCopied;
 		}
+		// If buffer would spill over
 		if((writePos - positions) >= bufferSize)
 		{
 			cerr << "Resetting buffer" << endl;
 			writePos -= bufferSize;
 		}
-		cerr << "Iteration Copied" << endl;
+		cerr << "Iteration Complete" << endl;
 	}
-#else	// (not) CONNECTING
-	int x = 0, y = 1, z = 2, mass = 3;
-	std::ifstream file;
-	file.open("positions.txt");
-	if (!file.is_open() )
-	{
-		return;
-	}
-	while(1)
-	{
-		// Polling approach sucks, but blocking is hard
-		while(writePos < readPos && readPos < (writePos + numParticles))
-				;       // Wait until there is room to write
-		while (!file.eof())
-		{
-			file >> writePos[x] >> writePos[y] >>
-							writePos[z] >> writePos[mass];
-			writePos += 4;
-		}
-		file.seekg(0);
-		if((writePos - positions) >= bufferSize)
-				writePos = positions;
-	}
-#endif	// CONNECTING
 }
 
 void Visualizer::registerWithSimulation()
 {
+	// Initialize connection file descriptor
 	int connectFD = -1;
-	#ifndef CONNECTING
-	std::ifstream file;
-	#endif
 	try
 	{
-	#ifdef CONNECTING
+		// Get Connection to Simulation
 		connectFD = getConnection();
 		cerr << "Connected on socket " << connectFD << endl;
-		if(connectFD != -1)
+		if(connectFD != -1) // (Valid connection)
 		{
+			// Read Number of particles from simulation and send acknowledgement
 			int bytesRead = 0;
 			char numberBuffer[10];
-			// Make one read: simulation should report number of particles
 			if((bytesRead = read(connectFD, numberBuffer, 9)) > 0)
 			{
+				// Cap the read value and send back ACK
 				numberBuffer[bytesRead] = '\0';
-				cerr << "Number of particles = " << numberBuffer << endl;
 				int bytesWritten = 0;
 				char ack[4] = "ACK";
 				int bytesToWrite = 4;
-				if((bytesWritten = write(connectFD, ack, bytesToWrite)) < bytesToWrite)
+				if((bytesWritten = write(connectFD, ack, bytesToWrite)) < 
+					bytesToWrite)
 				{
 					cerr << "Could not send acknowledgement" 
 							<< endl << "Shutting down" << endl;
 					exit(1);
 				}
-					// Success: Number of particles retrieved and ACK sent
+				// Success: Number of particles retrieved and ACK sent
 			}
 			else
 			{
@@ -574,21 +545,19 @@ void Visualizer::registerWithSimulation()
 						<< endl << "Shutting down" << endl;
 				exit(1);
 			}
-			cerr << "Sent acknowledgement" << endl;
-			numberBuffer[bytesRead] = '\0';
+			// Create buffer of size 3 * number of particles
+			// with 4 floats per particle
 			numParticles = boost::lexical_cast<int>(numberBuffer);
-			bytesPerBuffer = numParticles * 4 * sizeof(float);
-			bufferSize = 3 * bytesPerBuffer;
-			cerr << "bufferSize == " << bufferSize << endl;
-			cerr << "bytesPerBuffer == " << bytesPerBuffer << endl;
+			floatsPerBuffer = numParticles * 4;
+			bufferSize = 3 * floatsPerBuffer;
 			positions = new float[bufferSize];
 			writePos = positions;
 			readPos = positions;
 		
+			// Copy first buffer of bytes from simulation, then 
+			// tell Visualizer it can begin to read the buffer
 			int bytesCopied = 0;
-			int bytesToCopy = bytesPerBuffer;
-		
-			cerr << "Preparing to read" << endl;
+			int bytesToCopy = floatsPerBuffer;
 			while ((bytesCopied = read(connectFD, writePos, bytesToCopy)) < 
 					bytesToCopy)
 			{
@@ -602,10 +571,7 @@ void Visualizer::registerWithSimulation()
 				}
 				bytesToCopy -= bytesCopied;
 				writePos += bytesCopied;
-				cerr << "Read " << bytesCopied << " bytes this time" << endl;
 			}
-			cerr << "Ready to copy after " << bytesPerBuffer 
-				<< " bytes total read!" << endl;
 
 			// Obtain average position of particles
 			float x = 0;
@@ -616,8 +582,8 @@ void Visualizer::registerWithSimulation()
 			int numParticlesCopied = bytesCopied / 4;
 			for(int i = 0; i < numParticlesCopied; i++, tempPosition += 4)
 			{               
-				x += tempPosition[0];            
-				y += tempPosition[1];            
+				x += tempPosition[0];
+				y += tempPosition[1];
 				z += tempPosition[2];
 			}
 			
@@ -638,7 +604,10 @@ void Visualizer::registerWithSimulation()
 			// Set the camera's direction
 			direction = at - position;
 
+			// Finally ready to begin visualizing
 			ready = true;
+			
+			// Continue to read and populate the buffer in a loop
 			mainReadLoop(connectFD);
 		}
 		else
@@ -647,31 +616,6 @@ void Visualizer::registerWithSimulation()
 				<< endl << "Shutting down" << endl;
 			exit(1);
 		}
-	#else // (not) CONNECTING
-		// Read from file instead
-		numParticles = 11;
-		bytesPerBuffer = numParticles * 4 * sizeof(float);
-		bufferSize = 3 * bytesPerBuffer;
-		positions = new float[bufferSize];
-		readPos = positions;
-		writePos = positions;
-		file.open("positions.txt");
-		if (!file.is_open() )
-		{
-			return;
-		}
-
-		int x = 0, y = 1, z = 2, mass = 3;        
-		while (!file.eof())
-		{
-			file >> writePos[x] >> writePos[y] >>
-							writePos[z] >> writePos[mass];
-			writePos+= 4;
-		}
-		ready = true;
-		file.close();
-		mainReadLoop(-1);
-	#endif // CONNECTING
 	}
 	catch(boost::thread_interrupted thrdEx)
 	{
@@ -679,10 +623,6 @@ void Visualizer::registerWithSimulation()
 			close(connectFD);
 		if(positions != NULL)
 			delete positions;
-		#ifndef CONNECTING
-		if(file.is_open())
-			file.close();
-		#endif
 	}
 }
 
@@ -711,11 +651,21 @@ void Visualizer::visualize()
 
 int main (int argc, char *argv[] )
 {
+	// Initialize glut and create Visualizer
 	glutInit( &argc, argv );
 	Visualizer visualizer;
-	boost::thread dataThread = boost::thread(boost::bind(&Visualizer::registerWithSimulation), &visualizer);
+	
+	// Create thread for populating the buffer with data from the simulation
+	boost::thread dataThread = boost::thread(boost::bind(
+		&Visualizer::registerWithSimulation), &visualizer);
+	
+	// Run visualizer
 	visualizer.visualize();
+	
+	// Terminate data thread
 	dataThread.interrupt();
+	
+	// return success!
 	return 0;
 }
 

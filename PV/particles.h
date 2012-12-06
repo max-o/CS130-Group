@@ -71,7 +71,7 @@ private:
 	static float *writePos;
 	static int numParticles;
 	static int bufferSize;
-	static int bytesPerBuffer;
+	static int floatsPerBuffer;
 	static bool ready;
 
 	// TO BE DELETED
