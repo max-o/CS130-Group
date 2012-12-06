@@ -1,9 +1,5 @@
 //
-//  main.cpp
-//  sphere
-//
-//  Created by Scott Friedman on 10/10/11.
-//  Copyright 2011 __MyCompanyName__. All rights reserved.
+//  particles.cpp
 //
 
 #include "Angel.h"
@@ -80,6 +76,10 @@ int Visualizer::numParticles;
 int Visualizer::bufferSize;
 int Visualizer::bytesPerBuffer;
 bool Visualizer::ready = false;
+
+const float CAMERA_INIT_DIST_X = -10.0;
+const float CAMERA_INIT_DIST_Y = 8.0;
+const float CAMERA_INIT_DIST_Z = 15.0;
 
 Visualizer::Visualizer()
 {
@@ -319,8 +319,13 @@ void Visualizer::keyboard( unsigned char key, int x, int y )
 				position.y -= MIN_DIST_INCREMENT;               
 				break;  
 		case ' ': // reset
-				position  = point4(-10, 8, 15, 1.0);
-				at        = point4( 0.0, 0.0, 0.0, 1.0 );
+			#ifdef CONNECTING
+				position.x = at.x + CAMERA_INIT_DIST_X;
+				position.y = at.y + CAMERA_INIT_DIST_Y;
+				position.z = at.z + CAMERA_INIT_DIST_Z;
+			#else // not CONNECTING
+				position = point4(-10, 8, 15, 1.0);
+			#endif
 				up        = point4( 0.0, 1.0, 0.0, 0.0 );
 				direction = at - position;                  
 				zNear     = 1.0f;
@@ -601,6 +606,38 @@ void Visualizer::registerWithSimulation()
 			}
 			cerr << "Ready to copy after " << bytesPerBuffer 
 				<< " bytes total read!" << endl;
+
+			// Obtain average position of particles
+			float x = 0;
+			float y = 0;
+			float z = 0;
+			
+			float* tempPosition = positions;
+			int numParticlesCopied = bytesCopied / 4;
+			for(int i = 0; i < numParticlesCopied; i++, tempPosition += 4)
+			{               
+				x += tempPosition[0];            
+				y += tempPosition[1];            
+				z += tempPosition[2];
+			}
+			
+			float avg_x = x / numParticlesCopied;
+			float avg_y = y / numParticlesCopied;
+			float avg_z = z / numParticlesCopied;
+
+			// Set the camera's "at" point to the average position
+			at.x = avg_x;
+			at.y = avg_y;
+			at.z = avg_z;
+
+			// Set the camera's own position
+			position.x = avg_x + CAMERA_INIT_DIST_X;
+			position.y = avg_y + CAMERA_INIT_DIST_Y;
+			position.z = avg_z + CAMERA_INIT_DIST_Z;
+
+			// Set the camera's direction
+			direction = at - position;
+
 			ready = true;
 			mainReadLoop(connectFD);
 		}
