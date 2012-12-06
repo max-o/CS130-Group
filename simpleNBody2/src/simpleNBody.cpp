@@ -9,6 +9,7 @@
 #include <boost/thread.hpp>
 #include <boost/lexical_cast.hpp>
 #include "MultiNBodyWorld.h"
+#include "MultiDomainBuffer.h"
 #include <mpi.h>
 // Socket includes
 #include <iostream>
@@ -26,7 +27,9 @@ using namespace std;
 
 boost::mutex visLock;				// Lock on visualizer vector
 vector<int> registeredVisualizers;	// visualizer vector
-int numParticles = 4096;			// number of particles to send each cycle
+int numParticlesPerWorld;			// number of particles to send each cycle
+int numParticlesPerDomain;
+int numDomains;
 int listenSocket;
 
 void cleanup()
@@ -46,42 +49,76 @@ void cleanup()
 	visLock.unlock();
 }
 
-void sendData(float *buf)
+void sendDomainData(uint8_t *buf)
 {
-	int numTries = 1;
-	int bytesWritten = 0;
-	int bytesToWrite = numParticles;
+	bool nope = false;
 	for(vector<int>::iterator i = registeredVisualizers.begin(); i != registeredVisualizers.end(); i++)
 	{
+		uint8_t *sendBuf = buf;
 		int connectFD = *i;
-		while((bytesWritten += write(connectFD, (buf + bytesWritten), (bytesToWrite - bytesWritten))) < bytesToWrite)
+		int bytesWritten = 0;
+		int bytesToWrite = 3 * numParticlesPerDomain * 4 * sizeof(float);
+		while((bytesWritten = send(connectFD, sendBuf, bytesToWrite, MSG_NOSIGNAL)) < bytesToWrite)
 		{
-			numTries++;
-			fprintf(stderr, "Wrote %d bytes so far\n", bytesWritten);
+			if(bytesWritten < 0)
+			{
+				// Socket closed: remove from visualizer list
+				close(connectFD);
+				registeredVisualizers.erase(i);
+				i--;
+				nope = true;
+				fprintf(stderr, "Visualizer %d closed connection\n", connectFD);
+				break;
+			}
+			sendBuf += bytesWritten;
+			bytesToWrite -= bytesWritten;
 		}
-		fprintf(stderr, "Wrote number of particles after %d tries!\n", numTries);
 	}
+}
+
+void sendCallback(MultiDomainBuffer *mdb, worldBuffer *wBuf)
+{
+	uint8_t *domBuf = (uint8_t *)(wBuf->pDoms);
+	visLock.lock();
+	for(int i = 0; i < numDomains; i++)
+	{
+		sendDomainData(domBuf);
+		domBuf++;
+	}
+	visLock.unlock();
+	mdb->UnlockBuffer();
 }
 
 void registerVisualizer(int connectFD)
 {
-	visLock.lock();
 	int bytesWritten = 0;
-	string np = boost::lexical_cast<string>(numParticles);
+	string np = boost::lexical_cast<string>(numParticlesPerWorld);
 	int bytesToWrite = np.length();
-	if((bytesWritten = write(connectFD, np.c_str(), bytesToWrite)) == bytesToWrite)
+	if((bytesWritten = send(connectFD, np.c_str(), bytesToWrite, MSG_NOSIGNAL)) == bytesToWrite)
 	{
-		// Visualizer connected and ready
-		registeredVisualizers.push_back(connectFD);
+		// numParticlesPerWorld sent successfully
+		int bytesRead = 0;
+		char acknowledgement[4];
+		char ackConf[4] = "ACK";
+		int bytesToRead = 4;
+		if((bytesRead = read(connectFD, acknowledgement, bytesToRead)) == bytesToRead)
+		{
+			if(!strncmp(acknowledgement, ackConf, 4))
+			{
+				// Acknowledgement recieved
+				// Visualizer connected and ready
+				visLock.lock();
+				registeredVisualizers.push_back(connectFD);
+				for(int i = 0; i < registeredVisualizers.size(); i++)
+					fprintf(stderr, "Visualizer %d in queue\n",
+						 registeredVisualizers[i]);
+				visLock.unlock();
+				return;
+			}
+		}
 	}
-	else
-	{
-		// Could not write bytes to visualizer
-		close(connectFD);
-	}
-	for(int i = 0; i < registeredVisualizers.size(); i++)
-		fprintf(stderr, "Visualizer %d in queue\n", registeredVisualizers[i]);
-	visLock.unlock();
+	// Could not read/write bytes from/to visualizer
+	close(connectFD);
 }
 
 void registrationThreadRoutine()
@@ -181,9 +218,6 @@ int main(int argc, char** argv)
 	boost::thread registrationThread = boost::thread(registrationThreadRoutine);
 
 	// Initialize MPI
-    
-
-    
 	int rank, numprocs;
 	MPI_Comm comm_main;
 	MPI_Init(&argc,&argv);
@@ -198,6 +232,15 @@ int main(int argc, char** argv)
 
 	theWorld->loadInput(argc,argv);
 	theWorld->init(comm_main);
+	
+	// Get info about number of particles in the world
+	MultiDomainBuffer *mdb = theWorld->getMDB();
+	numParticlesPerDomain = mdb->getNBodies();
+	numDomains = mdb->getNDomains();
+	numParticlesPerWorld = numParticlesPerDomain * numDomains;
+	
+	// Register send callback to domain buffer
+	mdb->OnBufferComplete(sendCallback);
 
 	MPI_Barrier(comm_main);
 

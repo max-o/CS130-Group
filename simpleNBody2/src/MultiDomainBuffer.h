@@ -8,6 +8,7 @@
 #define MULTIDOMAINBUFFER_H_
 
 #include <cstdlib>
+#include <boost/thread.hpp>
 
 // using triple-buffering
 #define NUM_DOMAIN_BUFFERS 3
@@ -47,10 +48,10 @@ typedef void(*pBufferCompleteFn)(MultiDomainBuffer *, worldBuffer *);
 class MultiDomainBuffer {
 public:
    // constructor 
-   // nDoms: the number of domains in each world
    // nBods: the number of bodies (particles) in each domain
+   // nDoms: the number of domains in each world
    // all domains must have the same number of bodies
-	MultiDomainBuffer(int nDoms, int nBods);
+	MultiDomainBuffer(int nBods, int nDoms);
 	~MultiDomainBuffer();
 
    // Function to buffer a new set of data
@@ -82,6 +83,7 @@ private:
 	worldBuffer * pWorldBuf; // array of world buffers
    pBufferCompleteFn callback; // callback function registered by the caller
    bool bufferLocked; 
+   boost::mutex guard;
    
    // index variables for tracking the buffer states
    int completeBuffer, iterLockedBuffer, iterUnlockedBuffer; 
@@ -92,3 +94,4 @@ private:
 };
 
 #endif /* MULTIDOMAINBUFFER_H_ */
+

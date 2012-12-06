@@ -76,9 +76,10 @@ bool Visualizer::descent2 = true;
 float* Visualizer::positions;
 float* Visualizer::readPos;
 float* Visualizer::writePos;
-int     Visualizer::numParticles;
-int		Visualizer::bufferSize;
-bool	Visualizer::ready = false;
+int Visualizer::numParticles;
+int Visualizer::bufferSize;
+int Visualizer::bytesPerBuffer;
+bool Visualizer::ready = false;
 
 Visualizer::Visualizer()
 {
@@ -236,11 +237,14 @@ void Visualizer::display( void )
 		
 		// MICHAEL: Made a change to condition from writePos <= to writePos <,
 		// so that we redraw the current buffer if next buffer isn't available
-		if(readPos <= writePos && writePos < (readPos + 4 * numParticles))
+		if(readPos <= writePos && 
+			writePos < (float *)((uint8_t *)readPos + bytesPerBuffer))
 		{
-			readPos = readPos + (8 * numParticles);
+			readPos = (float *)((uint8_t *)readPos + (2 * bytesPerBuffer));
 			if((readPos - positions) >= bufferSize)
-					readPos -= bufferSize;
+			{
+				readPos = (float *)((uint8_t *)readPos - bufferSize);
+			}
 		}
 
 		for(int i = 0; i < numParticles; i++, readPos += 4)
@@ -248,7 +252,7 @@ void Visualizer::display( void )
 			x = readPos[0];            
 			y = readPos[1];            
 			z = readPos[2];            
-			mass = readPos[3];            
+			mass = readPos[3] / 64.0f;            
 			if (count % 2 == 0)
 					model_view = LookAt(position, position + direction, up) * Translate(x, py1+y, z) * Scale(mass, mass, mass);
 			else
@@ -258,8 +262,8 @@ void Visualizer::display( void )
 			count++;
 		}
 		if((readPos - positions) >= bufferSize)
-		{         
-			readPos -= bufferSize;
+		{
+			readPos = (float *)((uint8_t *)readPos - bufferSize);
 		}
 
 		glutSwapBuffers();
@@ -475,28 +479,32 @@ void Visualizer::mainReadLoop(int connectFD)
 	while(1)
 	{
 		int bytesCopied = 0;
-		int bytesToCopy = numParticles * 4 * sizeof(float);
+		int bytesToCopy = bytesPerBuffer;
 		
 		// Polling approach sucks, but blocking is hard
-		while(writePos <= readPos && readPos < (writePos + numParticles))
-				;       // Wait until there is room to write
+		while(writePos < readPos && readPos < (writePos + numParticles))
+				cerr << "Cycling!" << endl;// Wait until there is room to write
 		
 		while ((bytesCopied = read(connectFD, writePos, bytesToCopy)) < 
 				bytesToCopy)
 		{
-			if(bytesCopied <= 0)
+			if(bytesCopied < 0)
 			{
 				// Connection was closed: Time to end
 				close(connectFD);
 				cout << "Connection closed by simulation" << endl <<
-					"Shutting Down" << end;
+					"Shutting Down" << endl;
 				exit(0);
 			}
 			bytesToCopy -= bytesCopied;
 			writePos += bytesCopied;
 		}
 		if((writePos - positions) >= bufferSize)
+		{
+			cerr << "Resetting buffer" << endl;
 			writePos -= bufferSize;
+		}
+		cerr << "Iteration Copied" << endl;
 	}
 #else	// (not) CONNECTING
 	int x = 0, y = 1, z = 2, mass = 3;
@@ -509,7 +517,7 @@ void Visualizer::mainReadLoop(int connectFD)
 	while(1)
 	{
 		// Polling approach sucks, but blocking is hard
-		while(writePos <= readPos && readPos < (writePos + numParticles))
+		while(writePos < readPos && readPos < (writePos + numParticles))
 				;       // Wait until there is room to write
 		while (!file.eof())
 		{
@@ -564,13 +572,16 @@ void Visualizer::registerWithSimulation()
 			cerr << "Sent acknowledgement" << endl;
 			numberBuffer[bytesRead] = '\0';
 			numParticles = boost::lexical_cast<int>(numberBuffer);
-			bufferSize = 3 * numParticles * 4 * sizeof(float);
+			bytesPerBuffer = numParticles * 4 * sizeof(float);
+			bufferSize = 3 * bytesPerBuffer;
+			cerr << "bufferSize == " << bufferSize << endl;
+			cerr << "bytesPerBuffer == " << bytesPerBuffer << endl;
 			positions = new float[bufferSize];
 			writePos = positions;
 			readPos = positions;
 		
 			int bytesCopied = 0;
-			int bytesToCopy = numParticles * 4 * sizeof(float);
+			int bytesToCopy = bytesPerBuffer;
 		
 			cerr << "Preparing to read" << endl;
 			while ((bytesCopied = read(connectFD, writePos, bytesToCopy)) < 
@@ -581,14 +592,14 @@ void Visualizer::registerWithSimulation()
 					// Connection was closed: Time to end
 					close(connectFD);
 					cout << "Connection closed by simulation" << endl <<
-						"Shutting Down" << end;
+						"Shutting Down" << endl;
 					exit(0);
 				}
 				bytesToCopy -= bytesCopied;
 				writePos += bytesCopied;
 				cerr << "Read " << bytesCopied << " bytes this time" << endl;
 			}
-			cerr << "Ready to copy after " << bytesToCopy 
+			cerr << "Ready to copy after " << bytesPerBuffer 
 				<< " bytes total read!" << endl;
 			ready = true;
 			mainReadLoop(connectFD);
@@ -602,7 +613,8 @@ void Visualizer::registerWithSimulation()
 	#else // (not) CONNECTING
 		// Read from file instead
 		numParticles = 11;
-		bufferSize = 3 * numParticles * 4 * sizeof(float);
+		bytesPerBuffer = numParticles * 4 * sizeof(float);
+		bufferSize = 3 * bytesPerBuffer;
 		positions = new float[bufferSize];
 		readPos = positions;
 		writePos = positions;

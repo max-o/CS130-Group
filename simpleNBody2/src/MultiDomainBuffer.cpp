@@ -1,8 +1,9 @@
-#include "stdafx.h"
-#include "MultiDomainBuffer.h"
 
+#include "MultiDomainBuffer.h"
+#include "stdio.h"
 MultiDomainBuffer::MultiDomainBuffer(int nBods, int nDoms)
 {
+// printf("** MultiDomainBuffer Constructor\n");
    this->nBods = nBods;
    this->nDoms = nDoms;
 
@@ -17,6 +18,7 @@ MultiDomainBuffer::MultiDomainBuffer(int nBods, int nDoms)
 
       for(int domainCounter = 0; domainCounter < nDoms; domainCounter ++)
       {
+         this->pWorldBuf[bufferCounter].pDoms[domainCounter].nIter = -1;
          this->pWorldBuf[bufferCounter].pDoms[domainCounter].pBuf = new float[FLOATS_PER_BODY*nBods];
       }
    }
@@ -50,10 +52,14 @@ MultiDomainBuffer::~MultiDomainBuffer()
 
 void MultiDomainBuffer::Buffer(float *fBods, int nIter, int nDom)
 {
+//printf("buffer nIter %d, nDom %d\n", nIter, nDom);
    // does this invocation contain info from the simulation iteration that corresponds to the fixed
    // iteration buffer?
    if(nIter == this->pWorldBuf[iterLockedBuffer].nIter)
    {
+      // establish a lock to make this thread-safe -- the buffer swap would not be thread-safe
+      boost::mutex::scoped_lock l(guard);
+
       // copy the data to the buffer
       this->pWorldBuf[iterLockedBuffer].pDoms[nDom].nIter = nIter;
       memcpy(this->pWorldBuf[iterLockedBuffer].pDoms[nDom].pBuf, fBods, nBods*FLOATS_PER_BODY*sizeof(float));
@@ -99,6 +105,9 @@ void MultiDomainBuffer::Buffer(float *fBods, int nIter, int nDom)
    // iteration buffer
    else if(nIter >= this->pWorldBuf[iterUnlockedBuffer].nIter)
    {
+      // establish a lock to make this thread-safe -- the changes to buffer iteration would not be thread safe
+      boost::mutex::scoped_lock l(guard);
+
       // copy the data into our buffer
       this->pWorldBuf[iterUnlockedBuffer].pDoms[nDom].nIter = nIter;
       memcpy(this->pWorldBuf[iterUnlockedBuffer].pDoms[nDom].pBuf, fBods, nBods*FLOATS_PER_BODY*sizeof(float));
@@ -127,14 +136,24 @@ bool MultiDomainBuffer::isBufferComplete(worldBuffer *pWorldBuf)
 {
    // a complete buffer is one where every domain has data corresponding to
    // the same iteration as the buffer's iteration
-   for(int domCounter = 0; domCounter < this->nDoms; domCounter++)
-   {
-      if(pWorldBuf->nIter != pWorldBuf->pDoms[domCounter].nIter)
-      {
-         return false;
-      }
-   }
+   
 
+	for(int domCounter = 0; domCounter < this->nDoms; domCounter++)
+   {
+	
+	//printf("** comp world_it %d, buf_it %d\n", pWorldBuf->nIter, pWorldBuf->pDoms[domCounter].nIter);
+      
+    if(pWorldBuf->nIter != pWorldBuf->pDoms[domCounter].nIter)
+      {
+      	//printf("***** Not Completed\n");   
+      	return false;
+      }
+   
+  }
+	for(int domCounter = 0; domCounter < this->nDoms; domCounter++)
+	//printf("Point 0 in iter %d domain %d is %f %f %f\n",pWorldBuf->nIter,domCounter,pWorldBuf->pDoms[domCounter].pBuf[0],pWorldBuf->nIter,domCounter,pWorldBuf->pDoms[domCounter].pBuf[1],pWorldBuf->nIter,domCounter,pWorldBuf->pDoms[domCounter].pBuf[2]);
+ //printf("***** Completed\n");	
+//printf("Point 0 in iter %d domain %d",pWorldBuf->nIter,domCounter);
    return true;
 }
 
@@ -148,13 +167,16 @@ int MultiDomainBuffer::getNDomains()
    return this->nDoms;
 }
 
+/*
 // callback function used for unit testing
 void unitTestCallback (MultiDomainBuffer* mdb, worldBuffer* pBuf)
 {
    fprintf(stdout, "callback invoked for iter %d\n", pBuf->nIter);
    mdb->UnlockBuffer();
 }
+*/
 
+/*
 // simple unit tests
 int main(int argc, char* argv[])
 {
@@ -187,3 +209,4 @@ int main(int argc, char* argv[])
 }
 
 
+*/

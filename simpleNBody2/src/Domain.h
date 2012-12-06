@@ -29,9 +29,8 @@ public:
 	int getRank(){return rank;}
 
 	virtual void run(){};
-  
-	virtual void step(float dt=0){};
-  
+	virtual void step(float dt=0,int di=0){};
+
 
 protected:
 

@@ -67,7 +67,7 @@ LD_MPI_FLAGS    ?= -lmpi -lmpi_cxx
 #LD_MPI_FLAGS = -lmpich -lmpichcxx
 
 #Boost stuff
-BOOST_PATH        ?= ../boostLibs
+BOOST_PATH        ?= ../lib/boost_1_52_0
 BOOST_LIB_PATH    ?= $(BOOST_PATH)/stage/lib
 BOOST_INC_PATH    ?= $(BOOST_PATH)/
 LD_BOOST_FLAGS    ?= -lboost_thread -lboost_system
@@ -152,13 +152,16 @@ build: simpleNBody
 cuobj/MultiNBodyDomain.o: src/MultiNBodyDomain.cu src/MultiNBodyDomain.h src/Domain.h src/World.h
 	$(NVCC) $(NVCCFLAGS) $(EXTRA_NVCCFLAGS) $(GENCODE_FLAGS) $(INCLUDES) -o $@ -c $<
 
-ccobj/MultiNBodyWorld.o: src/MultiNBodyWorld.cpp src/MultiNBodyWorld.h src/Domain.h src/World.h
+ccobj/MultiDomainBuffer.o : src/MultiDomainBuffer.cpp src/MultiDomainBuffer.h
+	$(GCC) $(CCFLAGS) $(EXTRA_CCFLAGS) $(INCLUDES) -o $@ -c $<
+
+ccobj/MultiNBodyWorld.o: src/MultiNBodyWorld.cpp src/MultiNBodyWorld.h src/Domain.h src/World.h src/MultiDomainBuffer.h
 	$(GCC) $(CCFLAGS) $(EXTRA_CCFLAGS) $(INCLUDES) -o $@ -c $<
 
 ccobj/simpleNBody.o: src/simpleNBody.cpp
 	$(GCC) $(CCFLAGS) $(EXTRA_CCFLAGS) $(INCLUDES) -o $@ -c $<
 
-simpleNBody: ccobj/simpleNBody.o ccobj/MultiNBodyWorld.o cuobj/MultiNBodyDomain.o
+simpleNBody: ccobj/simpleNBody.o ccobj/MultiNBodyWorld.o ccobj/MultiDomainBuffer.o cuobj/MultiNBodyDomain.o
 	$(GCC) $(CCFLAGS) -o bin/$@ $+ $(LDFLAGS) $(EXTRA_LDFLAGS) $(LD_MPI_FLAGS) $(LD_BOOST_FLAGS)
 
 run: build

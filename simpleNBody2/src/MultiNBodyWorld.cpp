@@ -9,18 +9,29 @@
 #include "MultiNBodyDomain.h"
 #include <string.h>
 #include <math.h>
+#include "MultiDomainBuffer.h"
+
+/*
+void unitTestCallback (MultiDomainBuffer* mdb, worldBuffer* pBuf)
+{
+ printf("uniTestCall back invoked\n");
+//  printf("callback invoked for iter %d\n", pBuf->nIter);
+   mdb->UnlockBuffer();
+}
+*/
 
 MultiNBodyWorld::MultiNBodyWorld()
 {
 	// TODO Auto-generated constructor stub
 
-	// Default Setup
+	
+	
 	numBodies = 4096;
 	nDoms=1;
 	useGpu=false;
 	tlim=1.0;
 	dt=1e-3;
-
+	
 	// Demo Conditions from SDK Exampels
 	nDemoParams=7;
 	demoParams=new NBodyParams[nDemoParams];
@@ -48,7 +59,8 @@ void MultiNBodyWorld::init(){
 	sqrt(3.0);
 	int dom_edge=ceil(exp(log( ((double)nDoms)/3.0 ))); // Ceil 3rd-root of #-processors - 3d Domain array
 
-	for(int di=0;di<nDoms;di++){
+	
+for(int di=0;di<nDoms;di++){
 		int dom_rank=di%n_proc; // Boring but important if there were more domains that Processors
 		int parami=di%nDemoParams;
 		NBodyParams initParams=demoParams[parami];
@@ -67,6 +79,7 @@ void MultiNBodyWorld::init(){
 		domains[di]->init();
 		//printf("Dom[%d] on Rank[%d]: Active=%s UseGPU=%s \n",di,comm_rank,domains[di]->isActive()?"T":"F",domains[di]->onGpu()?"T":"F");
 	}
+
 }
 
 void MultiNBodyWorld::loadInput(int argc, char **argv)
@@ -107,4 +120,9 @@ void MultiNBodyWorld::loadInput(int argc, char **argv)
 
 	}
 	if(comm_rank==0)printf("Setting MultiNBodyWorld to %d Bodies and %d Domains %susing GPU to T=%f\n",numBodies,nDoms,useGpu?"":"not ",tlim);
+	
+//	printf("number of domains %d numBodies %d",nDoms,numBodies);
+	mdb=new MultiDomainBuffer(numBodies,nDoms);
+	//mdb->OnBufferComplete(unitTestCallback);
+
 }
