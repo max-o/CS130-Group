@@ -37,27 +37,23 @@ void cleanup()
 	// close sockets
 	close(listenSocket);
 	
-	// Still need to lock: but if we can't get it we already have it
-	// (Thread can be interrupted while holding the lock)
-	visLock.try_lock();
+	// Close all visualizer sockets
 	for(vector<int>::iterator i = registeredVisualizers.begin(); 
 		i != registeredVisualizers.end(); i++)
 	{
 		close(*i);
-		registeredVisualizers.erase(i);
 	}
-	visLock.unlock();
 }
 
 void sendDomainData(uint8_t *buf)
 {
-	bool nope = false;
+	// Send data from specific domain buffer to each registered visualizer
 	for(vector<int>::iterator i = registeredVisualizers.begin(); i != registeredVisualizers.end(); i++)
 	{
 		uint8_t *sendBuf = buf;
 		int connectFD = *i;
 		int bytesWritten = 0;
-		int bytesToWrite = 3 * numParticlesPerDomain * 4 * sizeof(float);
+		int bytesToWrite = numParticlesPerDomain * 4 * sizeof(float);
 		while((bytesWritten = send(connectFD, sendBuf, bytesToWrite, MSG_NOSIGNAL)) < bytesToWrite)
 		{
 			if(bytesWritten < 0)
@@ -66,8 +62,6 @@ void sendDomainData(uint8_t *buf)
 				close(connectFD);
 				registeredVisualizers.erase(i);
 				i--;
-				nope = true;
-				fprintf(stderr, "Visualizer %d closed connection\n", connectFD);
 				break;
 			}
 			sendBuf += bytesWritten;
@@ -78,6 +72,7 @@ void sendDomainData(uint8_t *buf)
 
 void sendCallback(MultiDomainBuffer *mdb, worldBuffer *wBuf)
 {
+	// Send data to visualizers by domain, then unlock the mdb
 	uint8_t *domBuf = (uint8_t *)(wBuf->pDoms);
 	visLock.lock();
 	for(int i = 0; i < numDomains; i++)
@@ -91,16 +86,20 @@ void sendCallback(MultiDomainBuffer *mdb, worldBuffer *wBuf)
 
 void registerVisualizer(int connectFD)
 {
+	// Register a visualizer after accepting a connection
 	int bytesWritten = 0;
 	string np = boost::lexical_cast<string>(numParticlesPerWorld);
 	int bytesToWrite = np.length();
-	if((bytesWritten = send(connectFD, np.c_str(), bytesToWrite, MSG_NOSIGNAL)) == bytesToWrite)
+	// Send the number of particles in the world to the visualizer
+	if((bytesWritten = send(connectFD, np.c_str(), bytesToWrite, 
+		MSG_NOSIGNAL)) == bytesToWrite)
 	{
 		// numParticlesPerWorld sent successfully
 		int bytesRead = 0;
 		char acknowledgement[4];
 		char ackConf[4] = "ACK";
 		int bytesToRead = 4;
+		// Get acknowledgement of the visualizer
 		if((bytesRead = read(connectFD, acknowledgement, bytesToRead)) == bytesToRead)
 		{
 			if(!strncmp(acknowledgement, ackConf, 4))

@@ -6,6 +6,7 @@
 #include <fstream>
 #include "Angel.h"
 #include <math.h>
+#include <boost/thread.hpp>
 #ifdef __APPLE__  // include Mac OS X verions of headers
 #  include <OpenGL/OpenGL.h>
 #  include <GLUT/glut.h>
@@ -42,7 +43,6 @@ public:
 	static void keyboard( unsigned char key, int x, int y );
 	static void SpecialKeys(int key, int x, int y);
 	static void Release(int key, int x, int y);
-	static void idle();
 	void visualize();
 	static int getConnection();
 	static void mainReadLoop(int connectFD);
@@ -73,6 +73,7 @@ private:
 	static int bufferSize;
 	static int floatsPerBuffer;
 	static bool ready;
+	static boost::mutex bufLocks[3];
 
 	// TO BE DELETED
 	static float p1x; static float p1z;

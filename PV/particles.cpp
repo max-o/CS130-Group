@@ -74,6 +74,7 @@ int Visualizer::numParticles;
 int Visualizer::bufferSize;
 int Visualizer::floatsPerBuffer;
 bool Visualizer::ready = false;
+boost::mutex Visualizer::bufLocks[3];
 
 const float CAMERA_INIT_DIST_X = -10.0;
 const float CAMERA_INIT_DIST_Y = 8.0;
@@ -231,38 +232,35 @@ void Visualizer::display( void )
 
 		mat4 model_view;
 		float x, y, z, mass;
-		int count = 0;
-		
-		// MICHAEL: Made a change to condition from writePos <= to writePos <,
-		// so that we redraw the current buffer if next buffer isn't available
+		int bufNo = ((int)(readPos - positions) / floatsPerBuffer);
+		bufLocks[bufNo].lock();/*
+		// Redraw the current buffer if next buffer isn't available
 		if(readPos < writePos && 
 			writePos < (readPos + floatsPerBuffer))
 		{
 			readPos = (readPos + (2 * floatsPerBuffer));
 			if((readPos - positions) >= bufferSize)
 			{
-				readPos = (readPos - bufferSize);
+				readPos -= bufferSize;
 			}
-		}
+		}*/
 
 		for(int i = 0; i < numParticles; i++, readPos += 4)
-		{               
-			x = readPos[0];            
-			y = readPos[1];            
-			z = readPos[2];            
-			mass = readPos[3] / 64.0f;            
-			if (count % 2 == 0)
-					model_view = LookAt(position, position + direction, up) * Translate(x, py1+y, z) * Scale(mass, mass, mass);
-			else
-					model_view = LookAt(position, position + direction, up) * Translate(x, py2+y, z) * Scale(mass, mass, mass);
+		{
+			x = readPos[0];
+			y = readPos[1];
+			z = readPos[2];
+			mass = 1.0f / 32.0f;
+			model_view = LookAt(position, position + direction, up) * 
+				Translate(x, y, z) * Scale(mass, mass, mass);
 			glUniformMatrix4fv(ModelView, 1, GL_TRUE, model_view);
 			glDrawArrays(GL_TRIANGLES, 4 * NUM_VERTICES, NUM_VERTICES);
-			count++;
 		}
 		if((readPos - positions) >= bufferSize)
 		{
 			readPos -= bufferSize;
 		}
+		bufLocks[bufNo].unlock();
 
 		glutSwapBuffers();
 	}
@@ -369,49 +367,6 @@ void Visualizer::Release(int key, int x, int y)
 	glutPostRedisplay();
 }
 
-void Visualizer::idle()
-{
-	if (descent1 == false)
-	{
-		py1 += p1time/2;
-		p1time += 0.002f;
-		if (p1time > .05)
-		{
-			descent1 = true;
-		}
-	}
-	else if (descent1 == true)
-	{
-		py1 -= p1time/2;
-		p1time -= 0.002f;
-		if (p1time < .03)
-		{
-			descent1 = false;
-		}
-	}
-
-	if (descent2 == false)
-	{
-		py2 += p2time/2;
-		p2time += 0.001f;
-		if (p2time > .05)
-		{
-			descent2 = true;
-		}
-	}
-	else if (descent2 == true)
-	{
-		py2 -= p2time/2;
-		p2time -= 0.001f;
-		if (p2time < .03)
-		{
-			descent2 = false;
-		}
-	}
-		
-	glutPostRedisplay();    
-}
-
 int Visualizer::getConnection()
 {
 	// Variables for finding socket
@@ -480,10 +435,13 @@ void Visualizer::mainReadLoop(int connectFD)
 		int bytesCopied = 0;
 		int bytesToCopy = floatsPerBuffer;
 		
+		int bufNo = ((int)(writePos - positions) / floatsPerBuffer);
+		bufLocks[bufNo].lock();
+		/*
 		// Wait until there is room to write
-		while(writePos < readPos && readPos < (writePos + numParticles))
-		{	;}
-		
+		while(writePos < readPos && readPos < (writePos + floatsPerBuffer))
+			{cerr << "IT" << endl;}
+		*/
 		// Copy read bytes into buffer
 		while ((bytesCopied = read(connectFD, writePos, bytesToCopy)) < 
 				bytesToCopy)
@@ -499,13 +457,14 @@ void Visualizer::mainReadLoop(int connectFD)
 			bytesToCopy -= bytesCopied;
 			writePos += bytesCopied;
 		}
+		bytesToCopy -= bytesCopied;
+		writePos += bytesCopied;
 		// If buffer would spill over
 		if((writePos - positions) >= bufferSize)
 		{
-			cerr << "Resetting buffer" << endl;
 			writePos -= bufferSize;
 		}
-		cerr << "Iteration Complete" << endl;
+		bufLocks[bufNo].unlock();
 	}
 }
 
@@ -517,7 +476,6 @@ void Visualizer::registerWithSimulation()
 	{
 		// Get Connection to Simulation
 		connectFD = getConnection();
-		cerr << "Connected on socket " << connectFD << endl;
 		if(connectFD != -1) // (Valid connection)
 		{
 			// Read Number of particles from simulation and send acknowledgement
@@ -561,7 +519,7 @@ void Visualizer::registerWithSimulation()
 			while ((bytesCopied = read(connectFD, writePos, bytesToCopy)) < 
 					bytesToCopy)
 			{
-				if(bytesCopied <= 0)
+				if(bytesCopied < 0)
 				{
 					// Connection was closed: Time to end
 					close(connectFD);
@@ -572,7 +530,9 @@ void Visualizer::registerWithSimulation()
 				bytesToCopy -= bytesCopied;
 				writePos += bytesCopied;
 			}
-
+			bytesToCopy -= bytesCopied;
+			writePos += bytesCopied;
+/*
 			// Obtain average position of particles
 			float x = 0;
 			float y = 0;
@@ -603,7 +563,7 @@ void Visualizer::registerWithSimulation()
 
 			// Set the camera's direction
 			direction = at - position;
-
+*/
 			// Finally ready to begin visualizing
 			ready = true;
 			
@@ -631,7 +591,7 @@ void Visualizer::visualize()
 	glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
 	glutInitWindowPosition(100, 50);
 	glutInitWindowSize(800, 600);
-	glutCreateWindow( "Sphere" );
+	glutCreateWindow( "Visualizer" );
 	
 #ifndef __APPLE__  // include Mac OS X verions of headers
 	glewInit();
@@ -640,7 +600,7 @@ void Visualizer::visualize()
 	init();
 	
 	glutDisplayFunc(display);
-	glutIdleFunc(idle);
+	glutIdleFunc(glutPostRedisplay);
 	glutReshapeFunc(reshape);
 	glutKeyboardFunc(keyboard);
 	glutSpecialFunc(SpecialKeys); // special function for arrow keys

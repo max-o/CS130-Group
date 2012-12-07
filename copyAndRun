@@ -1,7 +1,0 @@
-#!/bin/bash
-
-zip -r runfile.zip simpleNBody2/
-scp runfile.zip team2@mars.seas.ucla.edu:~/Travis/runfile.zip
-afrl
-
-rm runfile.zip
