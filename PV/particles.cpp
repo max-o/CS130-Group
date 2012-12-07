@@ -233,18 +233,11 @@ void Visualizer::display( void )
 		mat4 model_view;
 		float x, y, z, mass;
 		int bufNo = ((int)(readPos - positions) / floatsPerBuffer);
-		bufLocks[bufNo].lock();/*
-		// Redraw the current buffer if next buffer isn't available
-		if(readPos < writePos && 
-			writePos < (readPos + floatsPerBuffer))
-		{
-			readPos = (readPos + (2 * floatsPerBuffer));
-			if((readPos - positions) >= bufferSize)
-			{
-				readPos -= bufferSize;
-			}
-		}*/
+		
+		// Wait for write pointer to be out of the buffer
+		bufLocks[bufNo].lock();
 
+		// Render each particle with OpenGL
 		for(int i = 0; i < numParticles; i++, readPos += 4)
 		{
 			x = readPos[0];
@@ -532,38 +525,7 @@ void Visualizer::registerWithSimulation()
 			}
 			bytesToCopy -= bytesCopied;
 			writePos += bytesCopied;
-/*
-			// Obtain average position of particles
-			float x = 0;
-			float y = 0;
-			float z = 0;
 			
-			float* tempPosition = positions;
-			int numParticlesCopied = bytesCopied / 4;
-			for(int i = 0; i < numParticlesCopied; i++, tempPosition += 4)
-			{               
-				x += tempPosition[0];
-				y += tempPosition[1];
-				z += tempPosition[2];
-			}
-			
-			float avg_x = x / numParticlesCopied;
-			float avg_y = y / numParticlesCopied;
-			float avg_z = z / numParticlesCopied;
-
-			// Set the camera's "at" point to the average position
-			at.x = avg_x;
-			at.y = avg_y;
-			at.z = avg_z;
-
-			// Set the camera's own position
-			position.x = avg_x + CAMERA_INIT_DIST_X;
-			position.y = avg_y + CAMERA_INIT_DIST_Y;
-			position.z = avg_z + CAMERA_INIT_DIST_Z;
-
-			// Set the camera's direction
-			direction = at - position;
-*/
 			// Finally ready to begin visualizing
 			ready = true;
 			

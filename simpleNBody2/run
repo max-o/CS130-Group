@@ -1,8 +1,0 @@
-#!/bin/bash
-
-export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/team2/Travis/lib/boost_1_52_0/stage/lib:$LD_LIBRARY_PATH
-
-mpirun -np 1 ./bin/simpleNBody &
-
-echo done!
-
